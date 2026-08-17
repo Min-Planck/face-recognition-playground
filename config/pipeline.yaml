@@ -1,0 +1,36 @@
+# Cấu hình pipeline — đổi giá trị ở đây để chọn detector/embedder mà không cần sửa code
+
+pipeline:
+  detector: "retinaface"       # lựa chọn: retinaface | mediapipe | yolov8
+  embedder: "arcface"          # lựa chọn: arcface | facenet512 | sface
+  threshold: 0.68              # threshold cosine similarity riêng cho combo (detector, embedder) này
+                                # LƯU Ý: mỗi combo cần threshold riêng, tìm qua ROC/EER (xem docs/ke_hoach_thi_nghiem_detector_embedder.md)
+
+preprocessing:
+  clahe:
+    enabled: true
+    clip_limit: 2.0
+    tile_grid_size: [8, 8]
+  denoise: true
+  sharpen: false
+
+enrollment:
+  samples_per_person: 3        # số ảnh chụp khi đăng ký, dùng similarity max khi matching
+
+liveness:
+  enabled: true
+  mode: "passive"               # passive (Laplacian variance, hoạt động với st.camera_input)
+                                 # active (EAR/blink — cần streamlit-webrtc, video liên tục)
+  laplacian_threshold: 100.0     # ngưỡng phân biệt ảnh thật/ảnh chụp lại màn hình — cần tự calibrate
+
+benchmark:
+  n_repeats: 5                  # số lần lặp mỗi test case để lấy trung bình
+  image_dir: "./data/test_images"
+  output_csv: "./benchmarks/results/benchmark_results.csv"
+
+export:
+  onnx_opset: 17
+  quantization:
+    method: "dynamic"           # dynamic | static (static cần calibration_data_dir)
+    calibration_data_dir: "./data/processed"
+    per_channel: true           # theo best practice đã bàn: per-channel tốt hơn per-tensor cho CNN

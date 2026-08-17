@@ -1,0 +1,33 @@
+# === Core pipeline ===
+deepface==0.0.93
+insightface==0.7.3
+mediapipe==0.10.14
+ultralytics==8.3.0          # YOLO-face detection
+onnxruntime==1.19.2         # đổi sang onnxruntime-gpu nếu chạy GPU
+opencv-python==4.10.0.84
+numpy==1.26.4
+
+# === Liveness / anti-spoofing (Laplacian, EAR) ===
+scipy==1.13.1                # dùng cho tính EAR (distance giữa landmark)
+
+# === Config & app ===
+pyyaml==6.0.2
+streamlit==1.38.0
+streamlit-webrtc==0.47.9     # optional: chỉ cần nếu làm active liveness / video liên tục
+
+# === Benchmark & đo tài nguyên ===
+psutil==6.0.0
+pandas==2.2.2
+
+# === Đánh giá (FAR/FRR/EER/ROC) ===
+scikit-learn==1.5.1
+matplotlib==3.9.1
+seaborn==0.13.2
+
+# === Export / quantization ===
+onnx==1.16.2
+# onnxconverter-common>=1.14.0   # optional nếu cần float16 conversion
+torch>=2.4.1                 # cần nếu fine-tune hoặc export từ PyTorch (arcface_torch, retinaface-pytorch)
+
+# === Test ===
+pytest==8.3.2
