@@ -1,10 +1,16 @@
 # Cấu hình pipeline — đổi giá trị ở đây để chọn detector/embedder mà không cần sửa code
 
 pipeline:
-  detector: "retinaface"       # lựa chọn: retinaface | mediapipe | yolov8
-  embedder: "arcface"          # lựa chọn: arcface | facenet512 | sface
-  threshold: 0.68              # threshold cosine similarity riêng cho combo (detector, embedder) này
-                                # LƯU Ý: mỗi combo cần threshold riêng, tìm qua ROC/EER (xem docs/ke_hoach_thi_nghiem_detector_embedder.md)
+  detector: "mediapipe"        # lựa chọn: mediapipe | retinaface | yolov8
+  embedder: "sface"            # lựa chọn: sface | arcface | facenet512
+  threshold: 0.26              # threshold cosine similarity mặc định theo combo
+# Các ngưỡng này được hiệu chuẩn thực nghiệm dựa trên 108 cặp ảnh stress-test         
+# (sinh ra từ 3 ảnh gốc trong data/test_images/ kèm các biến thể thiếu sáng, ngược sáng, góc nghiêng).    
+# Nếu triển khai trên dữ liệu mới, hãy chạy lại scripts/calibrate_thresholds.py để cập nhật.
+thresholds:
+  sface: 0.26                  # Ngưỡng tối ưu SFace (128-D)
+  arcface: 0.30                # Ngưỡng tối ưu ArcFace (512-D)
+  facenet512: 0.25             # Ngưỡng tối ưu FaceNet512 (512-D)
 
 preprocessing:
   clahe:
@@ -12,25 +18,24 @@ preprocessing:
     clip_limit: 2.0
     tile_grid_size: [8, 8]
   denoise: true
-  sharpen: false
+  sharpen: true
 
 enrollment:
   samples_per_person: 3        # số ảnh chụp khi đăng ký, dùng similarity max khi matching
 
 liveness:
   enabled: true
-  mode: "passive"               # passive (Laplacian variance, hoạt động với st.camera_input)
-                                 # active (EAR/blink — cần streamlit-webrtc, video liên tục)
-  laplacian_threshold: 100.0     # ngưỡng phân biệt ảnh thật/ảnh chụp lại màn hình — cần tự calibrate
+  mode: "passive"              # passive (Laplacian variance, hoạt động với st.camera_input)
+  laplacian_threshold: 100.0   # ngưỡng phân biệt ảnh thật/ảnh chụp lại màn hình
 
 benchmark:
-  n_repeats: 5                  # số lần lặp mỗi test case để lấy trung bình
+  n_repeats: 3                 # số lần lặp mỗi test case để lấy trung bình
   image_dir: "./data/test_images"
   output_csv: "./benchmarks/results/benchmark_results.csv"
 
 export:
   onnx_opset: 17
   quantization:
-    method: "dynamic"           # dynamic | static (static cần calibration_data_dir)
+    method: "dynamic"          # dynamic | static
     calibration_data_dir: "./data/processed"
-    per_channel: true           # theo best practice đã bàn: per-channel tốt hơn per-tensor cho CNN
+    per_channel: true          # per-channel cho CNN

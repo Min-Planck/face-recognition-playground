@@ -5,12 +5,17 @@ Module Embedder Factory: Cung cấp interface BaseEmbedder và các triển khai
 3. SFace (Nhánh tối ưu tốc độ cho Edge, 128-D)
 
 Hỗ trợ factory function `get_embedder(config)` đọc cấu hình từ pipeline.yaml.
+Tích hợp Thread-Safe Lock và Contiguous Memory Buffer để chống crash bộ nhớ Windows.
 """
 
 from abc import ABC, abstractmethod
+import threading
 from typing import Any, Dict, List, Optional, Union
 import cv2
 import numpy as np
+
+# Khóa đồng bộ luồng toàn cục để ngăn xung đột bộ nhớ C++ trong TensorFlow / DeepFace
+_EMBEDDER_LOCK = threading.Lock()
 
 
 class BaseEmbedder(ABC):
@@ -73,17 +78,20 @@ class ArcFaceEmbedder(BaseEmbedder):
             return np.zeros(self.embedding_dim, dtype=np.float32)
 
         try:
-            results = self._deepface.represent(
-                img_path=face_crop,
-                model_name=self.model_name,
-                detector_backend="skip",  # Không lặp lại detection
-                enforce_detection=False,
-                align=False,
-            )
-            raw_emb = np.array(results[0]["embedding"], dtype=np.float32)
-            return self._normalize(raw_emb)
-        except Exception as e:
-            # Fallback nếu lỗi
+            # Ép mảng bộ nhớ liền mạch (contiguous) để chống lỗi C++ Access Violation
+            crop_contiguous = np.ascontiguousarray(face_crop.copy(), dtype=np.uint8)
+
+            with _EMBEDDER_LOCK:
+                results = self._deepface.represent(
+                    img_path=crop_contiguous,
+                    model_name=self.model_name,
+                    detector_backend="skip",  # Không lặp lại detection
+                    enforce_detection=False,
+                    align=False,
+                )
+                raw_emb = np.array(results[0]["embedding"], dtype=np.float32)
+                return self._normalize(raw_emb)
+        except Exception:
             return np.zeros(self.embedding_dim, dtype=np.float32)
 
 
@@ -101,15 +109,18 @@ class Facenet512Embedder(BaseEmbedder):
             return np.zeros(self.embedding_dim, dtype=np.float32)
 
         try:
-            results = self._deepface.represent(
-                img_path=face_crop,
-                model_name=self.model_name,
-                detector_backend="skip",
-                enforce_detection=False,
-                align=False,
-            )
-            raw_emb = np.array(results[0]["embedding"], dtype=np.float32)
-            return self._normalize(raw_emb)
+            crop_contiguous = np.ascontiguousarray(face_crop.copy(), dtype=np.uint8)
+
+            with _EMBEDDER_LOCK:
+                results = self._deepface.represent(
+                    img_path=crop_contiguous,
+                    model_name=self.model_name,
+                    detector_backend="skip",
+                    enforce_detection=False,
+                    align=False,
+                )
+                raw_emb = np.array(results[0]["embedding"], dtype=np.float32)
+                return self._normalize(raw_emb)
         except Exception:
             return np.zeros(self.embedding_dim, dtype=np.float32)
 
@@ -128,15 +139,18 @@ class SFaceEmbedder(BaseEmbedder):
             return np.zeros(self.embedding_dim, dtype=np.float32)
 
         try:
-            results = self._deepface.represent(
-                img_path=face_crop,
-                model_name=self.model_name,
-                detector_backend="skip",
-                enforce_detection=False,
-                align=False,
-            )
-            raw_emb = np.array(results[0]["embedding"], dtype=np.float32)
-            return self._normalize(raw_emb)
+            crop_contiguous = np.ascontiguousarray(face_crop.copy(), dtype=np.uint8)
+
+            with _EMBEDDER_LOCK:
+                results = self._deepface.represent(
+                    img_path=crop_contiguous,
+                    model_name=self.model_name,
+                    detector_backend="skip",
+                    enforce_detection=False,
+                    align=False,
+                )
+                raw_emb = np.array(results[0]["embedding"], dtype=np.float32)
+                return self._normalize(raw_emb)
         except Exception:
             return np.zeros(self.embedding_dim, dtype=np.float32)
 

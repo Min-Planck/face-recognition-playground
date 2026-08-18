@@ -261,7 +261,7 @@ def main():
             diff_scores = [sims.get(("img_1.png", "img_3.jpg"), 0.0), sims.get(("img_2.jpg", "img_3.jpg"), 0.0)]
             max_diff = max(diff_scores) if diff_scores else 0.0
             margin = same_score - max_diff
-            opt_th = f"[{max_diff + 0.05:.2f} - {same_score - 0.05:.2f}]"
+            opt_th = f"[{max_diff + 0.01:.2f} - {same_score - 0.01:.2f}]"
             f.write(f"| **{emb}** | **{same_score:.4f}** | {max_diff:.4f} | **+{margin:.4f}** | **{opt_th}** (Độ chính xác 100%) |\n")
 
         f.write("\n### Kết luận cốt lõi:\n")

@@ -104,6 +104,15 @@ class SessionFaceStore:
         """Danh sách mã nhân viên đã đăng ký."""
         return list(self._store.keys())
 
+    def get_all_enrolled_meta(self) -> Dict[str, Dict[str, Any]]:
+        """Trả về toàn bộ metadata và số lượng vector mẫu của từng nhân viên."""
+        result = {}
+        for pid, meta in self._metadata.items():
+            info = dict(meta)
+            info["samples_count"] = len(self._store.get(pid, []))
+            result[pid] = info
+        return result
+
     def clear(self) -> None:
         """Xóa toàn bộ dữ liệu session (dùng khi restart hoặc reset)."""
         self._store.clear()
@@ -146,10 +155,15 @@ class SessionFaceStore:
             if not stored_embeddings:
                 continue
 
-            sample_sims = [
-                float(np.dot(q_vec, s_vec))
-                for s_vec in stored_embeddings
-            ]
+            sample_sims = []
+            for s_vec in stored_embeddings:
+                if s_vec.shape != q_vec.shape:
+                    # Bỏ qua nếu vector mẫu khác số chiều (do người dùng chuyển đổi giữa 128-D và 512-D)
+                    continue
+                sample_sims.append(float(np.dot(q_vec, s_vec)))
+
+            if not sample_sims:
+                continue
 
             if aggregation == "mean":
                 person_score = float(np.mean(sample_sims))
