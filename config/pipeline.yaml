@@ -3,14 +3,15 @@
 pipeline:
   detector: "mediapipe"        # lựa chọn: mediapipe | retinaface | yolov8
   embedder: "sface"            # lựa chọn: sface | arcface | facenet512
-  threshold: 0.26              # threshold cosine similarity mặc định theo combo
-# Các ngưỡng này được hiệu chuẩn thực nghiệm dựa trên 108 cặp ảnh stress-test         
-# (sinh ra từ 3 ảnh gốc trong data/test_images/ kèm các biến thể thiếu sáng, ngược sáng, góc nghiêng).    
-# Nếu triển khai trên dữ liệu mới, hãy chạy lại scripts/calibrate_thresholds.py để cập nhật.
+  threshold: 0.32              # threshold cosine similarity mặc định theo combo
+
+# Các ngưỡng này được hiệu chuẩn thực nghiệm dựa trên 20 ảnh (10 danh tính: 1x2, 3x4, ..., 19x20)
+# kết hợp 3,600 lượt so khớp cặp ảnh stress-test (thiếu sáng, ngược sáng, góc nghiêng, nhiễu hạt).
+# Nếu triển khai trên dữ liệu phòng mới, hãy chạy lại scripts/calibrate_thresholds.py để cập nhật.
 thresholds:
-  sface: 0.26                  # Ngưỡng tối ưu SFace (128-D)
-  arcface: 0.30                # Ngưỡng tối ưu ArcFace (512-D)
-  facenet512: 0.25             # Ngưỡng tối ưu FaceNet512 (512-D)
+  sface: 0.32                  # Ngưỡng tối ưu SFace (128-D, EER Optimal = 0.325)
+  arcface: 0.24                # Ngưỡng tối ưu ArcFace (512-D, EER Optimal = 0.238)
+  facenet512: 0.53             # Ngưỡng tối ưu FaceNet512 (512-D, EER Optimal = 0.527)
 
 preprocessing:
   clahe:

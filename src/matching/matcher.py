@@ -104,6 +104,10 @@ class SessionFaceStore:
         """Danh sách mã nhân viên đã đăng ký."""
         return list(self._store.keys())
 
+    def get_embeddings(self, person_id: str) -> List[np.ndarray]:
+        """Lấy danh sách vector đặc trưng đã lưu của một nhân viên."""
+        return self._store.get(person_id, [])
+
     def get_all_enrolled_meta(self) -> Dict[str, Dict[str, Any]]:
         """Trả về toàn bộ metadata và số lượng vector mẫu của từng nhân viên."""
         result = {}

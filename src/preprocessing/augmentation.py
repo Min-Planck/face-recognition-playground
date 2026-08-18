@@ -104,3 +104,41 @@ def generate_hard_case_suite(
         "pose_tilt_right": simulate_pose_variation(image, angle=12.0),
         "sensor_noise": simulate_sensor_noise(image, std=18.0),
     }
+
+
+def generate_augmented_variants(
+    base_image: np.ndarray,
+    base_name: str,
+) -> list[Tuple[str, np.ndarray]]:
+    """
+    Sinh danh sách các cặp (tên_biến_thể, ảnh_biến_thể) phục vụ stress-test và calibration.
+
+    Args:
+        base_image: Ảnh gốc (BGR)
+        base_name: Tiền tố tên danh tính (ví dụ: 'p1_a')
+
+    Returns:
+        list[tuple[str, np.ndarray]]: Danh sách tuple (variant_name, variant_mat)
+    """
+    aug_dict = generate_hard_case_suite(base_image)
+    return [(f"{base_name}_{aug_name}", aug_mat) for aug_name, aug_mat in aug_dict.items()]
+
+
+def find_image_file(img_idx: int, image_dir: str = "data/test_images") -> str:
+    """
+    Tìm đường dẫn file ảnh theo index (img_1.png, img_2.jpg, ...).
+
+    Args:
+        img_idx: Chỉ số ảnh (1, 2, ..., 20)
+        image_dir: Thư mục chứa ảnh (mặc định: data/test_images)
+
+    Returns:
+        str: Đường dẫn tuyệt đối hoặc tương đối tới file ảnh
+    """
+    import os
+    for ext in [".png", ".jpg", ".jpeg", ".PNG", ".JPG", ".JPEG"]:
+        fname = f"img_{img_idx}{ext}"
+        fpath = os.path.join(image_dir, fname)
+        if os.path.exists(fpath):
+            return fpath
+    raise FileNotFoundError(f"Không tìm thấy ảnh img_{img_idx} trong {image_dir}")

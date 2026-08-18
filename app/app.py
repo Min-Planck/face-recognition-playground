@@ -7,13 +7,15 @@ Kiến trúc:
 
 Tính năng:
 1. Pha Enrollment: Đăng ký nhân viên (camera/upload, lưu N samples vào st.session_state).
-2. Pha Inference: Điểm danh thời gian thực, đo lường Latency, FPS, CPU%, RAM, Cosine Similarity.
+2. Pha Inference: Điểm danh thời gian thực, đo lường Latency thuần, FPS, CPU%, RAM, Cosine Similarity.
 3. Hoán đổi linh hoạt Detector và Embedder từ sidebar.
+4. Tự động đồng bộ ngưỡng tối ưu T* từ config/pipeline.yaml.
 """
 
 import os
 import sys
 import time
+import yaml
 import warnings
 from datetime import datetime
 
@@ -36,10 +38,11 @@ if PROJECT_ROOT not in sys.path:
 if CURRENT_DIR not in sys.path:
     sys.path.insert(0, CURRENT_DIR)
 
-from src.detectors.detector_factory import get_detector
+from src.detectors.detector_factory import get_detector, extract_aligned_face
 from src.embedders.embedder_factory import get_embedder
 from src.matching.matcher import SessionFaceStore, compute_cosine_similarity
 from src.preprocessing.clahe import preprocess_image
+from src.evaluation.resource_monitor import ResourceMonitor
 
 try:
     from components.metrics_display import (
@@ -62,8 +65,23 @@ st.set_page_config(
 )
 
 
+def load_pipeline_config() -> dict:
+    """Nạp cấu hình và ngưỡng hiệu chuẩn mới nhất từ config/pipeline.yaml."""
+    cfg_path = os.path.join(PROJECT_ROOT, "config", "pipeline.yaml")
+    if os.path.exists(cfg_path):
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    return {
+        "thresholds": {
+            "sface": 0.32,
+            "arcface": 0.24,
+            "facenet512": 0.53,
+        }
+    }
+
+
 # ==============================================================================
-# QUẢN LÝ SESSION STATE & CACHE MODEL
+# QUẢN LÝ SESSION STATE & CACHE MODEL (KÈM WARM-UP)
 # ==============================================================================
 if "store" not in st.session_state:
     st.session_state.store = SessionFaceStore(samples_per_person=3)
@@ -72,24 +90,27 @@ if "attendance_logs" not in st.session_state:
     st.session_state.attendance_logs = []
 
 
-@st.cache_resource(show_spinner="Đang khởi tạo mô hình Face Detector...")
+@st.cache_resource(show_spinner="Đang khởi tạo & Warm-up Face Detector...")
 def load_cached_detector(name: str):
-    """Cache detector object để tránh load lại model khi re-render UI."""
-    return get_detector(name)
+    """Cache detector object và chạy warm-up để loại bỏ độ trễ khởi động lạnh."""
+    det = get_detector(name)
+    dummy_img = np.zeros((300, 300, 3), dtype=np.uint8)
+    _ = det.detect(dummy_img)
+    return det
 
 
-@st.cache_resource(show_spinner="Đang khởi tạo mô hình Face Embedder...")
+@st.cache_resource(show_spinner="Đang khởi tạo & Warm-up Face Embedder...")
 def load_cached_embedder(name: str):
-    """Cache embedder object để tối ưu hóa bộ nhớ."""
-    return get_embedder(name)
+    """Cache embedder object và chạy warm-up 112x112 vào RAM."""
+    emb = get_embedder(name)
+    dummy_crop = np.zeros((112, 112, 3), dtype=np.uint8)
+    _ = emb.embed(dummy_crop)
+    return emb
 
 
 def get_current_system_usage():
-    """Lấy thông số CPU% và RAM (MB) của tiến trình hiện tại."""
-    process = psutil.Process(os.getpid())
-    ram_mb = process.memory_info().rss / (1024.0 * 1024.0)
-    cpu_percent = psutil.cpu_percent(interval=None)
-    return cpu_percent, ram_mb
+    """Lấy thông số CPU% và RAM (MB) của tiến trình hiện tại từ ResourceMonitor."""
+    return ResourceMonitor.get_current_usage()
 
 
 def draw_styled_detection(image: np.ndarray, bbox: tuple, label: str, is_match: bool = True) -> np.ndarray:
@@ -121,6 +142,13 @@ def draw_styled_detection(image: np.ndarray, bbox: tuple, label: str, is_match: 
 # ==============================================================================
 # SIDEBAR: CẤU HÌNH HỆ THỐNG & QUẢN LÝ MÔ HÌNH
 # ==============================================================================
+pipeline_cfg = load_pipeline_config()
+calibrated_thresholds = pipeline_cfg.get("thresholds", {
+    "sface": 0.32,
+    "arcface": 0.24,
+    "facenet512": 0.53,
+})
+
 st.sidebar.title("Cấu Hình Pipeline")
 
 st.sidebar.subheader("1. Lựa Chọn Mô Hình AI")
@@ -128,31 +156,26 @@ detector_choice = st.sidebar.selectbox(
     "Face Detector (Bộ Phát Hiện):",
     options=["mediapipe", "retinaface", "yolov8"],
     index=0,
-    help="MediaPipe: Siêu nhẹ cho Edge CPU | RetinaFace: Chuẩn xác cao | YOLOv8: Cân bằng",
+    help="MediaPipe: Siêu nhẹ cho Edge CPU (~36ms) | RetinaFace: Chuẩn xác cao | YOLOv8: Cân bằng",
 )
 
 embedder_choice = st.sidebar.selectbox(
     "Face Embedder (Bộ Trích Xuất):",
     options=["sface", "arcface", "facenet512"],
     index=0,
-    help="SFace: 128-D siêu nhanh cho Edge | ArcFace: 512-D bảo mật cao | FaceNet512: 512-D",
+    help="SFace: 128-D siêu nhanh (~41ms) | ArcFace: 512-D bảo mật cao | FaceNet512: 512-D",
 )
 
-# Gợi ý ngưỡng tối ưu theo kết quả Step 5 Calibration
-default_thresholds = {
-    "sface": 0.26,
-    "arcface": 0.30,
-    "facenet512": 0.25,
-}
-
 st.sidebar.subheader("2. Tham Số Nhận Diện")
+default_th_for_choice = float(calibrated_thresholds.get(embedder_choice, 0.32))
+
 threshold_val = st.sidebar.slider(
     "Ngưỡng Chấp Nhận (Cosine Threshold T):",
     min_value=0.05,
-    max_value=0.80,
-    value=float(default_thresholds.get(embedder_choice, 0.30)),
+    max_value=0.85,
+    value=default_th_for_choice,
     step=0.01,
-    help="Điểm tương đồng >= Ngưỡng sẽ được chấp nhận chấm công.",
+    help=f"Ngưỡng tối ưu hiệu chuẩn thực nghiệm cho {embedder_choice.upper()} là {default_th_for_choice:.2f}",
 )
 
 enable_clahe = st.sidebar.checkbox(
@@ -240,11 +263,10 @@ with tab_attendance:
 
     with col_result:
         if infer_mat is not None:
-            # Khởi tạo model
             detector = load_cached_detector(detector_choice)
             embedder = load_cached_embedder(embedder_choice)
 
-            # Đo độ trễ toàn chuỗi
+            # Bấm giờ inference thuần
             t_start = time.perf_counter()
 
             # 1. Tiền xử lý CLAHE
@@ -259,14 +281,10 @@ with tab_attendance:
             if not boxes:
                 st.error("Không tìm thấy khuôn mặt trong ảnh! Vui lòng nhìn thẳng vào camera và thử lại.")
             else:
-                face_box = boxes[0]
+                face_box = max(boxes, key=lambda b: b.w * b.h)
 
-                # 3. Alignment & Crop 112x112 (Contiguous Buffer)
-                if face_box.aligned_face is not None:
-                    aligned_crop = np.ascontiguousarray(face_box.aligned_face.copy(), dtype=np.uint8)
-                else:
-                    raw_crop = face_box.get_crop(processed_mat, margin=0.1)
-                    aligned_crop = np.ascontiguousarray(cv2.resize(raw_crop, (112, 112)), dtype=np.uint8)
+                # 3. Alignment & Crop 112x112 (Contiguous Buffer qua helper chuẩn)
+                aligned_crop = extract_aligned_face(detector, infer_mat, apply_clahe=enable_clahe)
 
                 # 4. Feature Embedding
                 query_vec = embedder.embed(aligned_crop)
@@ -306,7 +324,7 @@ with tab_attendance:
                     "Mã NV": match_res.matched_id if match_res.is_match else "Unknown",
                     "Họ Tên": matched_name or "Người Lạ",
                     "Similarity": f"{match_res.similarity_score:.4f}",
-                    "Ngưỡng T": threshold_val,
+                    "Ngưỡng T": f"{threshold_val:.2f}",
                     "Kết Quả": "Thành Công" if match_res.is_match else "Từ Chối",
                     "Latency (ms)": f"{latency_ms:.1f}",
                 })
@@ -368,12 +386,8 @@ with tab_enroll:
             if not boxes:
                 st.warning("Không phát hiện khuôn mặt! Vui lòng chụp rõ mặt hơn.")
             else:
-                face_box = boxes[0]
-                if face_box.aligned_face is not None:
-                    aligned_crop = np.ascontiguousarray(face_box.aligned_face.copy(), dtype=np.uint8)
-                else:
-                    raw_crop = face_box.get_crop(prep_enr, margin=0.1)
-                    aligned_crop = np.ascontiguousarray(cv2.resize(raw_crop, (112, 112)), dtype=np.uint8)
+                face_box = max(boxes, key=lambda b: b.w * b.h)
+                aligned_crop = extract_aligned_face(detector, enr_mat, apply_clahe=enable_clahe)
 
                 vis_enr = draw_styled_detection(enr_mat, face_box.bbox, f"Enroll: {person_name or 'New'}", is_match=True)
 

@@ -407,3 +407,42 @@ def get_detector(config: Union[str, Dict[str, Any]] = "retinaface") -> BaseDetec
             f"Không hỗ trợ detector: '{detector_name}'. "
             f"Các lựa chọn hợp lệ: 'retinaface', 'mediapipe', 'yolov8'."
         )
+
+
+def extract_aligned_face(
+    detector: BaseDetector,
+    image: np.ndarray,
+    target_size: Tuple[int, int] = (112, 112),
+    apply_clahe: bool = True,
+) -> np.ndarray:
+    """
+    Tiền xử lý CLAHE, phát hiện và trích xuất khuôn mặt lớn nhất đã chuẩn hóa.
+    Đảm bảo mảng bộ nhớ liền mạch (contiguous uint8 buffer) chống crash C++.
+
+    Args:
+        detector: Đối tượng Detector (MediaPipe, RetinaFace, YOLOv8)
+        image: Ảnh đầu vào BGR
+        target_size: Kích thước crop (mặc định 112x112)
+        apply_clahe: Có áp dụng tiền xử lý CLAHE hay không
+
+    Returns:
+        np.ndarray: Ảnh mặt crop chuẩn hóa (112, 112, 3) uint8 contiguous
+    """
+    if image is None or image.size == 0:
+        return np.zeros((*target_size, 3), dtype=np.uint8)
+
+    from src.preprocessing.clahe import preprocess_image
+    prep = preprocess_image(image) if apply_clahe else image.copy()
+
+    boxes = detector.detect(prep)
+    if not boxes:
+        h, w = prep.shape[:2]
+        crop = prep[int(h * 0.1):int(h * 0.9), int(w * 0.1):int(w * 0.9)]
+        return np.ascontiguousarray(cv2.resize(crop, target_size), dtype=np.uint8)
+
+    # Chọn khuôn mặt có diện tích lớn nhất (chính diện)
+    box = max(boxes, key=lambda b: b.w * b.h)
+    if box.aligned_face is not None:
+        return np.ascontiguousarray(box.aligned_face.copy(), dtype=np.uint8)
+    crop = box.get_crop(prep, margin=0.1)
+    return np.ascontiguousarray(cv2.resize(crop, target_size), dtype=np.uint8)

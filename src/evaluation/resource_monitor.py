@@ -90,3 +90,16 @@ class ResourceMonitor:
             "avg_ram_mb": round(self.avg_ram, 2),
             "peak_ram_mb": round(self.peak_ram, 2),
         }
+
+    @staticmethod
+    def get_current_usage() -> tuple[float, float]:
+        """
+        Lấy tức thời thông số CPU % và RAM (MB) của tiến trình hiện tại.
+
+        Returns:
+            tuple[float, float]: (cpu_percent, ram_mb)
+        """
+        process = psutil.Process(os.getpid())
+        ram_mb = process.memory_info().rss / (1024.0 * 1024.0)
+        cpu_percent = psutil.cpu_percent(interval=None)
+        return cpu_percent, ram_mb

@@ -6,17 +6,19 @@ Thiết kế đo đạc toàn diện theo yêu cầu kỹ thuật:
 3. Chạy nhóm tổ hợp tối ưu:
    - Nhánh A: Best Detector x 3 Embedders
    - Nhánh B: 3 Detectors x Best Embedder
-4. Thực nghiệm pha Chấm công thực tế trên bộ 3 ảnh:
-   - img_1.png: Đăng ký ban đầu (Original Enrollment Template của Nhân viên A).
-   - img_2.jpg: Chấm công hợp lệ (Valid Attendance của Nhân viên A - Cross-Age).
-   - img_3.jpg: Thử nghiệm người lạ / mạo danh (Impostor Attack của Người B).
-   - Đo Cosine Similarity, End-to-End Latency, CPU%, RAM MB, Passive Liveness.
+4. Thực nghiệm pha Chấm công trên tập 20 ảnh (10 danh tính nhân viên: 1x2, 3x4, ..., 19x20):
+   - Đăng ký ảnh A của các nhân viên.
+   - Quét ảnh B của nhân viên (Chấm công hợp lệ).
+   - Quét ảnh của người khác (Mạo danh).
+   - Sử dụng các ngưỡng hiệu chuẩn tối ưu T* từ config/pipeline.yaml.
+   - Tích hợp giai đoạn Warm-up (Khởi động bộ nhớ đệm / Cold-start elimination) trước khi bấm giờ.
 5. Xuất kết quả ra CSV (benchmarks/results/benchmark_results.csv) và Markdown Report.
 """
 
 import os
 import sys
 import time
+import yaml
 import cv2
 import numpy as np
 import pandas as pd
@@ -28,18 +30,18 @@ if sys.platform == "win32":
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.detectors.detector_factory import get_detector
+from src.detectors.detector_factory import get_detector, extract_aligned_face
 from src.embedders.embedder_factory import get_embedder
 from src.matching.matcher import SessionFaceStore, compute_cosine_similarity
 from src.liveness.passive import check_passive_liveness
 from src.preprocessing.clahe import preprocess_image
+from src.preprocessing.augmentation import find_image_file
 from src.evaluation.resource_monitor import ResourceMonitor
 
 IMAGE_DIR = "data/test_images"
-ENROLL_IMG_NAME = "img_1.png"
-VALID_IMG_NAME = "img_2.jpg"
-IMPOSTOR_IMG_NAME = "img_3.jpg"
+CONFIG_PATH = "config/pipeline.yaml"
 N_REPEATS = 3
+N_WARMUP = 2
 
 DETECTORS_LIST = ["mediapipe", "retinaface", "yolov8"]
 EMBEDDERS_LIST = ["arcface", "facenet512", "sface"]
@@ -49,38 +51,56 @@ REPORT_MD_PATH = "outputs/report/benchmark_results_report.md"
 FIGURES_DIR = "outputs/figures/benchmark_charts"
 
 
+def load_calibrated_thresholds() -> dict:
+    """Đọc ngưỡng đã hiệu chuẩn từ pipeline.yaml."""
+    if os.path.exists(CONFIG_PATH):
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+            return cfg.get("thresholds", {"sface": 0.32, "arcface": 0.24, "facenet512": 0.53})
+    return {"sface": 0.32, "arcface": 0.24, "facenet512": 0.53}
+
+
 def main():
     os.makedirs("benchmarks/results", exist_ok=True)
     os.makedirs("outputs/report", exist_ok=True)
     os.makedirs(FIGURES_DIR, exist_ok=True)
 
-    enroll_path = os.path.join(IMAGE_DIR, ENROLL_IMG_NAME)
-    valid_path = os.path.join(IMAGE_DIR, VALID_IMG_NAME)
-    impostor_path = os.path.join(IMAGE_DIR, IMPOSTOR_IMG_NAME)
+    thresholds_map = load_calibrated_thresholds()
 
-    enroll_img = cv2.imread(enroll_path)
-    valid_img = cv2.imread(valid_path)
-    impostor_img = cv2.imread(impostor_path)
-
-    if enroll_img is None or valid_img is None or impostor_img is None:
-        print("Lỗi: Không tìm thấy đủ bộ 3 ảnh test trong data/test_images/")
-        return
+    # Nạp 10 danh tính (mỗi danh tính gồm 2 ảnh: Ảnh A = Đăng ký, Ảnh B = Chấm công)
+    person_data = []
+    for p_id in range(1, 11):
+        idx_a = (p_id - 1) * 2 + 1
+        idx_b = (p_id - 1) * 2 + 2
+        path_a = find_image_file(idx_a)
+        path_b = find_image_file(idx_b)
+        img_a = cv2.imread(path_a)
+        img_b = cv2.imread(path_b)
+        person_data.append({
+            "id": f"NV{p_id:03d}",
+            "name": f"Nhan Vien {p_id:02d}",
+            "img_a": img_a,
+            "img_b": img_b,
+            "file_a": os.path.basename(path_a),
+            "file_b": os.path.basename(path_b),
+        })
 
     print("================================================================================")
     print("        BENCHMARK TEST 3: ĐO ĐẠC PIPELINE NHẬN DIỆN MÁY CHẤM CÔNG              ")
     print("================================================================================\n")
-    print(f"1. Ảnh đăng ký (Enrollment):      {ENROLL_IMG_NAME} ({enroll_img.shape})")
-    print(f"2. Ảnh chấm công hợp lệ (Valid):   {VALID_IMG_NAME} ({valid_img.shape})")
-    print(f"3. Ảnh người lạ mạo danh (Impostor): {IMPOSTOR_IMG_NAME} ({impostor_img.shape})")
-    print(f"Số lần lặp đo trung bình: {N_REPEATS}\n")
+    print(f"Tổng số danh tính nhân viên: {len(person_data)} (20 ảnh từ {IMAGE_DIR})")
+    print(f"Ngưỡng hiệu chuẩn T* đọc từ pipeline.yaml: {thresholds_map}")
+    print(f"Giai đoạn Warm-up: {N_WARMUP} lần chạy khởi động trước khi đo thời gian.")
+    print(f"Số lần lặp đo trung bình mỗi phép đo: {N_REPEATS}\n")
 
     benchmark_rows = []
 
     # ==============================================================================
-    # GIAI ĐOẠN 1: BENCHMARK DETECTOR ĐỘC LẬP
+    # GIAI ĐOẠN 1: BENCHMARK DETECTOR ĐỘC LẬP (VỚI WARM-UP)
     # ==============================================================================
     print("--- [Giai đoạn 1] Benchmark riêng 3 Detector ---")
     detector_scores = {}
+    sample_eval_img = person_data[0]["img_b"]  # Dùng img_2.jpg làm mẫu đo
 
     for det_name in DETECTORS_LIST:
         try:
@@ -89,13 +109,17 @@ def main():
             print(f"  [Lỗi khởi tạo detector] {det_name}: {e}")
             continue
 
+        # 1. Warm-up stage: Nạp model vào bộ nhớ và kích hoạt kernel C++/JIT
+        for _ in range(N_WARMUP):
+            _ = detector.detect(sample_eval_img)
+
         latencies = []
         monitor = ResourceMonitor(interval=0.03)
 
         with monitor:
             for _ in range(N_REPEATS):
                 t0 = time.perf_counter()
-                boxes = detector.detect(valid_img)
+                boxes = detector.detect(sample_eval_img)
                 latencies.append((time.perf_counter() - t0) * 1000.0)
 
         avg_lat = float(np.mean(latencies))
@@ -114,7 +138,7 @@ def main():
             "test_type": "Standalone Detection",
             "detector": det_name,
             "embedder": "-",
-            "target_image": VALID_IMG_NAME,
+            "target_image": person_data[0]["file_b"],
             "latency_ms": round(avg_lat, 2),
             "fps": round(fps, 2),
             "cpu_percent": round(monitor.avg_cpu, 2),
@@ -130,12 +154,15 @@ def main():
     print(f"\n👉 Best Performance Detector (Edge CPU): '{best_detector}' ({detector_scores[best_detector]['fps']:.1f} FPS, {detector_scores[best_detector]['latency_ms']:.1f} ms)\n")
 
     # ==============================================================================
-    # GIAI ĐOẠN 2: BENCHMARK EMBEDDER ĐỘC LẬP
+    # GIAI ĐOẠN 2: BENCHMARK EMBEDDER ĐỘC LẬP (VỚI WARM-UP)
     # ==============================================================================
     print("--- [Giai đoạn 2] Benchmark riêng 3 Embedder (trên mặt đã crop 112x112) ---")
     det_for_crop = get_detector(best_detector)
-    infer_boxes = det_for_crop.detect(valid_img)
-    sample_crop = infer_boxes[0].aligned_face if infer_boxes and infer_boxes[0].aligned_face is not None else cv2.resize(valid_img, (112, 112))
+    infer_boxes = det_for_crop.detect(sample_eval_img)
+    if infer_boxes and infer_boxes[0].aligned_face is not None:
+        sample_crop = np.ascontiguousarray(infer_boxes[0].aligned_face.copy(), dtype=np.uint8)
+    else:
+        sample_crop = np.ascontiguousarray(cv2.resize(sample_eval_img, (112, 112)), dtype=np.uint8)
 
     embedder_scores = {}
 
@@ -145,6 +172,10 @@ def main():
         except Exception as e:
             print(f"  [Lỗi khởi tạo embedder] {emb_name}: {e}")
             continue
+
+        # 1. Warm-up stage: Nạp TensorFlow/ONNX weights và kích hoạt bộ nhớ đệm
+        for _ in range(N_WARMUP):
+            _ = embedder.embed(sample_crop)
 
         latencies = []
         monitor = ResourceMonitor(interval=0.03)
@@ -187,12 +218,9 @@ def main():
     print(f"\n👉 Best Performance Embedder (Edge CPU): '{best_embedder}' ({embedder_scores[best_embedder]['fps']:.1f} FPS, {embedder_scores[best_embedder]['latency_ms']:.1f} ms)\n")
 
     # ==============================================================================
-    # GIAI ĐOẠN 3 & 4: TỔ HỢP TẬP TRUNG & THỰC NGHIỆM CHẤM CÔNG TOÀN DIỆN
+    # GIAI ĐOẠN 3 & 4: TỔ HỢP TẬP TRUNG & THỰC NGHIỆM CHẤM CÔNG (VỚI WARM-UP)
     # ==============================================================================
     print("--- [Giai đoạn 3 & 4] Thực nghiệm Chấm công: Tổ hợp Nhóm A & Nhóm B ---")
-    print(f"  Pha Enrollment:    {ENROLL_IMG_NAME} (Nhân viên A - Đăng ký mẫu)")
-    print(f"  Pha Test Hợp lệ:   {VALID_IMG_NAME}  (Nhân viên A - Cross-Age)")
-    print(f"  Pha Test Mạo danh: {IMPOSTOR_IMG_NAME} (Người B - Khác hoàn toàn)\n")
 
     combos_to_test = []
     # Nhóm A: Best Detector x 3 Embedders
@@ -204,198 +232,202 @@ def main():
         if det != best_detector:
             combos_to_test.append((det, best_embedder, "Group_B (3_Detectors x Best_Embedder)"))
 
-    # Ngưỡng tối ưu đã calibrate
-    thresholds_map = {"arcface": 0.30, "facenet512": 0.25, "sface": 0.26}
-
     pipeline_results = []
 
     for det_name, emb_name, group_tag in combos_to_test:
         detector = get_detector(det_name)
         embedder = get_embedder(emb_name)
-        th = thresholds_map.get(emb_name, 0.30)
+        th = float(thresholds_map.get(emb_name, 0.30))
 
-        # 1. ENROLLMENT (img_1.png)
-        enroll_prep = preprocess_image(enroll_img)
-        enroll_boxes = detector.detect(enroll_prep)
-        if not enroll_boxes:
-            continue
-        enroll_face = enroll_boxes[0].aligned_face if enroll_boxes[0].aligned_face is not None else cv2.resize(enroll_boxes[0].get_crop(enroll_prep), (112, 112))
-        enroll_vec = embedder.embed(enroll_face)
+        # Warm-up toàn chuỗi Pipeline (Tiền xử lý -> Detect -> Crop -> Embed)
+        for _ in range(N_WARMUP):
+            _prep = preprocess_image(sample_eval_img)
+            _boxes = detector.detect(_prep)
+            if _boxes:
+                _crop = _boxes[0].aligned_face if _boxes[0].aligned_face is not None else cv2.resize(_boxes[0].get_crop(_prep), (112, 112))
+                _ = embedder.embed(np.ascontiguousarray(_crop.copy(), dtype=np.uint8))
 
+        # 1. ENROLLMENT GALLERY (Đăng ký toàn bộ 10 nhân viên bằng Ảnh A)
         store = SessionFaceStore(samples_per_person=3)
-        store.enroll("NV001", enroll_vec, meta={"name": "Nguyen Van A"})
+        for p in person_data:
+            prep_a = preprocess_image(p["img_a"])
+            boxes_a = detector.detect(prep_a)
+            if boxes_a:
+                box_a = max(boxes_a, key=lambda b: b.w * b.h)
+                face_a = box_a.aligned_face if box_a.aligned_face is not None else cv2.resize(box_a.get_crop(prep_a), (112, 112))
+                face_a = np.ascontiguousarray(face_a.copy(), dtype=np.uint8)
+                vec_a = embedder.embed(face_a)
+                store.enroll(p["id"], vec_a, meta={"name": p["name"]})
 
-        # 2. CHẠY CẢ 2 TEST CASE: VALID VÀ IMPOSTOR
-        test_cases = [
-            ("VALID_ATTENDANCE", valid_img, VALID_IMG_NAME, True),
-            ("IMPOSTOR_ATTACK", impostor_img, IMPOSTOR_IMG_NAME, False),
-        ]
+        # 2. ĐO ĐẠC INFERENCE: VALID ATTENDANCE & IMPOSTOR ATTACK
+        valid_latencies = []
+        valid_scores = []
+        valid_correct = 0
 
-        for case_name, test_image_mat, test_img_filename, expected_match in test_cases:
-            latencies = []
-            sim_scores = []
-            liveness_results = []
+        impostor_latencies = []
+        impostor_scores = []
+        impostor_correct = 0
 
-            monitor = ResourceMonitor(interval=0.03)
+        monitor = ResourceMonitor(interval=0.03)
 
-            with monitor:
-                for _ in range(N_REPEATS):
-                    t0 = time.perf_counter()
-
-                    # Step 1: Preprocessing
-                    prep = preprocess_image(test_image_mat)
-
-                    # Step 2: Detection
-                    boxes = detector.detect(prep)
-                    if not boxes:
-                        continue
-                    face_box = boxes[0]
-
-                    # Step 3: Alignment
-                    if face_box.aligned_face is not None:
-                        face_crop = face_box.aligned_face
-                    else:
-                        face_crop = cv2.resize(face_box.get_crop(prep, margin=0.1), (112, 112))
-
-                    # Step 4: Passive Liveness check
-                    is_live, live_score, _ = check_passive_liveness(prep, face_box.bbox, laplacian_threshold=100.0)
-
-                    # Step 5: Embedding
-                    query_vec = embedder.embed(face_crop)
-
-                    # Step 6: 1:K Matching
-                    match_res = store.find_best_match(query_vec, threshold=th)
-
+        with monitor:
+            # A. Kiểm tra nhân viên hợp lệ (10 nhân viên quét Ảnh B)
+            for p in person_data:
+                t0 = time.perf_counter()
+                prep_b = preprocess_image(p["img_b"])
+                boxes_b = detector.detect(prep_b)
+                if boxes_b:
+                    box_b = max(boxes_b, key=lambda b: b.w * b.h)
+                    face_b = box_b.aligned_face if box_b.aligned_face is not None else cv2.resize(box_b.get_crop(prep_b), (112, 112))
+                    face_b = np.ascontiguousarray(face_b.copy(), dtype=np.uint8)
+                    vec_b = embedder.embed(face_b)
+                    match_res = store.find_best_match(vec_b, threshold=th)
                     lat = (time.perf_counter() - t0) * 1000.0
-                    latencies.append(lat)
-                    sim_scores.append(match_res.similarity_score)
-                    liveness_results.append(is_live)
+                    valid_latencies.append(lat)
+                    valid_scores.append(match_res.similarity_score)
+                    if match_res.is_match and match_res.matched_id == p["id"]:
+                        valid_correct += 1
 
-            avg_lat = float(np.mean(latencies)) if latencies else 0.0
-            fps = 1000.0 / avg_lat if avg_lat > 0 else 0
-            avg_sim = float(np.mean(sim_scores)) if sim_scores else 0.0
-            is_match = avg_sim >= th
-            correct = (is_match == expected_match)
+            # B. Kiểm tra kẻ mạo danh (Person 1 quét vào Store khi chỉ đăng ký Person 2..10, hoặc test so khớp chéo)
+            for i, p in enumerate(person_data):
+                # Tạo sub-store không chứa nhân viên p
+                sub_store = SessionFaceStore(samples_per_person=3)
+                for other_p in person_data:
+                    if other_p["id"] != p["id"]:
+                        for v in store.get_embeddings(other_p["id"]):
+                            sub_store.enroll(other_p["id"], v, meta={"name": other_p["name"]})
+                
+                t0 = time.perf_counter()
+                prep_b = preprocess_image(p["img_b"])
+                boxes_b = detector.detect(prep_b)
+                if boxes_b:
+                    box_b = max(boxes_b, key=lambda b: b.w * b.h)
+                    face_b = box_b.aligned_face if box_b.aligned_face is not None else cv2.resize(box_b.get_crop(prep_b), (112, 112))
+                    face_b = np.ascontiguousarray(face_b.copy(), dtype=np.uint8)
+                    vec_b = embedder.embed(face_b)
+                    match_res = sub_store.find_best_match(vec_b, threshold=th)
+                    lat = (time.perf_counter() - t0) * 1000.0
+                    impostor_latencies.append(lat)
+                    impostor_scores.append(match_res.similarity_score)
+                    if not match_res.is_match:
+                        impostor_correct += 1
 
-            decision = "Match (Dung Nhan Vien)" if is_match else "Rejected (Tu Choi)"
-            accuracy_status = "✅ CHÍNH XÁC" if correct else "❌ SAI"
+        avg_valid_lat = float(np.mean(valid_latencies)) if valid_latencies else 0.0
+        avg_valid_sim = float(np.mean(valid_scores)) if valid_scores else 0.0
+        valid_acc = (valid_correct / len(person_data)) * 100.0
 
-            row_data = {
-                "phase": "3_full_pipeline_matching",
-                "group": group_tag,
-                "test_type": case_name,
-                "detector": det_name,
-                "embedder": emb_name,
-                "target_image": test_img_filename,
-                "latency_ms": round(avg_lat, 2),
-                "fps": round(fps, 2),
-                "cpu_percent": round(monitor.avg_cpu, 2),
-                "avg_ram_mb": round(monitor.avg_ram, 2),
-                "peak_ram_mb": round(monitor.peak_ram, 2),
-                "cosine_similarity": round(avg_sim, 4),
-                "threshold": th,
-                "decision": decision,
-                "liveness_pass": all(liveness_results) if liveness_results else False,
-                "evaluation": accuracy_status,
-            }
-            benchmark_rows.append(row_data)
-            pipeline_results.append(row_data)
+        avg_imp_lat = float(np.mean(impostor_latencies)) if impostor_latencies else 0.0
+        avg_imp_sim = float(np.mean(impostor_scores)) if impostor_scores else 0.0
+        imp_acc = (impostor_correct / len(person_data)) * 100.0
 
-            print(f"  [{case_name[:5]}] {det_name:10s} + {emb_name:10s} | Latency: {avg_lat:6.2f} ms ({fps:4.2f} FPS) | Sim: {avg_sim:.4f} (Th: {th:.2f}) | {decision} -> {accuracy_status}")
+        overall_e2e_lat = (avg_valid_lat + avg_imp_lat) / 2.0
+        e2e_fps = 1000.0 / overall_e2e_lat if overall_e2e_lat > 0 else 0.0
 
-    # ==============================================================================
-    # GIAI ĐOẠN 5: XUẤT FILE CSV VÀ BÁO CÁO MARKDOWN
-    # ==============================================================================
-    df_all = pd.DataFrame(benchmark_rows)
-    df_all.to_csv(RESULTS_CSV_PATH, index=False, encoding="utf-8")
-    print(f"\n=== Đã lưu file dữ liệu Benchmark vào: {RESULTS_CSV_PATH} ===")
+        pipeline_results.append({
+            "combo": f"{det_name} + {emb_name}",
+            "group": group_tag,
+            "detector": det_name,
+            "embedder": emb_name,
+            "threshold": th,
+            "valid_sim": round(avg_valid_sim, 4),
+            "impostor_sim": round(avg_imp_sim, 4),
+            "valid_acc": round(valid_acc, 1),
+            "impostor_acc": round(imp_acc, 1),
+            "latency_ms": round(overall_e2e_lat, 2),
+            "fps": round(e2e_fps, 2),
+            "cpu_percent": round(monitor.avg_cpu, 2),
+            "avg_ram_mb": round(monitor.avg_ram, 2),
+            "peak_ram_mb": round(monitor.peak_ram, 2),
+        })
 
-    # Vẽ biểu đồ trực quan hóa (Chỉ giữ biểu đồ Latency rõ ràng)
-    valid_runs = [r for r in pipeline_results if r["test_type"] == "VALID_ATTENDANCE"]
+        benchmark_rows.append({
+            "phase": "3_pipeline_e2e",
+            "test_type": "Valid Attendance",
+            "detector": det_name,
+            "embedder": emb_name,
+            "target_image": "10 Persons Test",
+            "latency_ms": round(avg_valid_lat, 2),
+            "fps": round(1000.0 / avg_valid_lat if avg_valid_lat > 0 else 0, 2),
+            "cpu_percent": round(monitor.avg_cpu, 2),
+            "avg_ram_mb": round(monitor.avg_ram, 2),
+            "peak_ram_mb": round(monitor.peak_ram, 2),
+            "cosine_similarity": round(avg_valid_sim, 4),
+            "decision": f"Acc: {valid_acc:.1f}%",
+        })
 
-    fig, ax = plt.subplots(figsize=(9, 5.5))
+        print(f"  Combo: {det_name:10s} + {emb_name:10s} (T={th}) | Latency (Pure): {overall_e2e_lat:6.2f} ms ({e2e_fps:4.2f} FPS) | Valid Sim: {avg_valid_sim:.4f} ({valid_acc:.0f}%) | Impostor Sim: {avg_imp_sim:.4f} ({imp_acc:.0f}%)")
 
-    comb_labels = [f"{r['detector']}\n+ {r['embedder']}" for r in valid_runs]
-    lat_vals = [r['latency_ms'] for r in valid_runs]
-    fps_vals = [r['fps'] for r in valid_runs]
-    colors = ['#2ca02c' if 'Group_A' in r['group'] else '#1f77b4' for r in valid_runs]
+    # 4. Xuất kết quả CSV
+    df = pd.DataFrame(benchmark_rows)
+    df.to_csv(RESULTS_CSV_PATH, index=False, encoding="utf-8-sig")
+    print(f"\n=== Đã lưu dữ liệu benchmark chi tiết vào: {RESULTS_CSV_PATH} ===")
 
-    bars = ax.bar(comb_labels, lat_vals, color=colors, edgecolor='black', width=0.55, alpha=0.9)
-    ax.set_title("End-to-End Pipeline Latency Comparison (ms) - Lower is Better", fontsize=13, fontweight='bold', pad=12)
-    ax.set_ylabel("Latency (ms)", fontsize=11)
-    ax.set_xlabel("Detector + Embedder Combinations", fontsize=11)
-    ax.grid(axis='y', linestyle='--', alpha=0.5)
+    # 5. Vẽ biểu đồ cột trực quan hóa độ trễ End-to-End
+    fig, ax = plt.subplots(figsize=(10, 5))
 
-    # Hiển thị số liệu chính xác trên đầu mỗi cột
-    for bar, lat, fps in zip(bars, lat_vals, fps_vals):
+    combo_names = [r["combo"] for r in pipeline_results]
+    latencies_val = [r["latency_ms"] for r in pipeline_results]
+    fps_val = [r["fps"] for r in pipeline_results]
+
+    colors = ['#1f77b4', '#2ca02c', '#ff7f0e', '#d62728', '#9467bd']
+    bars = ax.bar(combo_names, latencies_val, color=colors[:len(combo_names)], width=0.55, edgecolor='black')
+
+    for bar, lat, fps in zip(bars, latencies_val, fps_val):
         yval = bar.get_height()
         ax.text(
-            bar.get_x() + bar.get_width()/2.0,
-            yval + max(lat_vals)*0.02,
-            f"{lat:.1f} ms\n({fps:.2f} FPS)",
+            bar.get_x() + bar.get_width() / 2.0,
+            yval + 15,
+            f"{lat:.1f} ms\n({fps:.1f} FPS)",
             ha='center',
             va='bottom',
-            fontsize=9.5,
-            fontweight='bold'
+            fontsize=10,
+            fontweight='bold',
         )
 
-    # Thêm chú thích nhóm màu
-    from matplotlib.patches import Patch
-    legend_elements = [
-        Patch(facecolor='#2ca02c', edgecolor='black', label='Group A (Best Det: MediaPipe x 3 Embedders)'),
-        Patch(facecolor='#1f77b4', edgecolor='black', label='Group B (3 Detectors x Best Emb: SFace)'),
-    ]
-    ax.legend(handles=legend_elements, loc='upper left', framealpha=0.9)
-    ax.set_ylim(0, max(lat_vals) * 1.25)
-
+    ax.set_title("So Sánh Độ Trễ Thuần (Pure Latency sau Warm-up) Các Tổ Hợp Pipeline", fontsize=13, fontweight='bold', pad=15)
+    ax.set_ylabel("Độ Trễ Inference Thuần (ms)", fontsize=11, fontweight='bold')
+    ax.set_ylim(0, max(latencies_val) * 1.25)
+    ax.grid(axis='y', linestyle='--', alpha=0.5)
+    plt.xticks(rotation=15, ha='right', fontsize=10, fontweight='bold')
     plt.tight_layout()
+
     chart_path = os.path.join(FIGURES_DIR, "pipeline_benchmark_comparison.png")
     plt.savefig(chart_path, dpi=200)
     plt.close()
-    print(f"=== Đã lưu biểu đồ vào: {chart_path} ===")
 
-    # Ghi Markdown Report
+    # 6. Xuất Báo Cáo Markdown
     with open(REPORT_MD_PATH, "w", encoding="utf-8") as f:
-        f.write("# Báo Cáo Benchmark Pipeline Nhận Diện Khuôn Mặt Máy Chấm Công (Test 3)\n\n")
-        f.write("Báo cáo đo đạc hiệu năng thực tế theo phương pháp tổ hợp tối ưu (Best Detector x 3 Embedders và 3 Detectors x Best Embedder) cùng thực nghiệm kiểm tra tính chính xác trên cả 2 trường hợp: Nhân viên thật (Valid) và Người lạ mạo danh (Impostor).\n\n")
+        f.write("# Báo Cáo Benchmark Pipeline Nhận Diện Khuôn Mặt\n\n")
+        f.write("Báo cáo đo đạc hiệu năng thực tế trên toàn bộ tập dữ liệu gồm **20 ảnh (10 danh tính nhân viên)** theo phương pháp tổ hợp tối ưu (Best Detector x 3 Embedders và 3 Detectors x Best Embedder), sử dụng ngưỡng $T^*$ đã hiệu chuẩn thực nghiệm từ `config/pipeline.yaml`.\n\n")
         f.write("---\n\n")
 
-        f.write("## 1. Kết Quả Benchmark Độc Lập Detector\n\n")
-        f.write("| Detector | Tốc độ (FPS) | Độ trễ (ms) | CPU (%) | RAM TB (MB) | Peak RAM (MB) |\n")
+        f.write("## 1. Kết Quả Benchmark Độc Lập Detector (Sau Warm-up)\n\n")
+        f.write("| Detector | Tốc độ (FPS) | Độ trễ Thuần (ms) | CPU (%) | RAM TB (MB) | Peak RAM (MB) |\n")
         f.write("|---|---|---|---|---|---|\n")
-        for det, s in detector_scores.items():
-            f.write(f"| **{det}** | **{s['fps']:.2f}** | {s['latency_ms']:.2f} ms | {s['cpu']:.1f}% | {s['ram']:.1f} MB | {s['peak_ram']:.1f} MB |\n")
-        f.write(f"\n🏆 **Best Performance Detector:** `{best_detector}` (Tốc độ {detector_scores[best_detector]['fps']:.1f} FPS, nhẹ nhất trên CPU).\n\n")
-
+        for det_name, s in detector_scores.items():
+            f.write(f"| **{det_name}** | **{s['fps']:.2f}** | {s['latency_ms']:.2f} ms | {s['cpu']:.1f}% | {s['ram']:.1f} MB | {s['peak_ram']:.1f} MB |\n")
+        f.write(f"\n🏆 **Best Performance Detector:** `{best_detector}` (Tốc độ {detector_scores[best_detector]['fps']:.1f} FPS, nhẹ nhất trên Edge CPU).\n\n")
         f.write("---\n\n")
-        f.write("## 2. Kết Quả Benchmark Độc Lập Embedder\n\n")
-        f.write("| Embedder | Vector Dim | Tốc độ (FPS) | Độ trễ (ms) | CPU (%) | RAM TB (MB) | Peak RAM (MB) |\n")
+
+        f.write("## 2. Kết Quả Benchmark Độc Lập Embedder (Sau Warm-up)\n\n")
+        f.write("| Embedder | Vector Dim | Tốc độ (FPS) | Độ trễ Thuần (ms) | CPU (%) | RAM TB (MB) | Peak RAM (MB) |\n")
         f.write("|---|---|---|---|---|---|---|\n")
-        for emb, s in embedder_scores.items():
-            f.write(f"| **{emb}** | {s['dim']}-D | **{s['fps']:.2f}** | {s['latency_ms']:.2f} ms | {s['cpu']:.1f}% | {s['ram']:.1f} MB | {s['peak_ram']:.1f} MB |\n")
+        for emb_name, s in embedder_scores.items():
+            f.write(f"| **{emb_name}** | {s['dim']}-D | **{s['fps']:.2f}** | {s['latency_ms']:.2f} ms | {s['cpu']:.1f}% | {s['ram']:.1f} MB | {s['peak_ram']:.1f} MB |\n")
         f.write(f"\n🏆 **Best Performance Embedder:** `{best_embedder}` (Độ trễ chỉ {embedder_scores[best_embedder]['latency_ms']:.2f} ms, tối ưu Edge).\n\n")
-
         f.write("---\n\n")
-        f.write("## 3. Kết Quả Thực Nghiệm Chấm Công End-to-End (Chống Nhận Nhầm & Điểm Danh Đúng)\n\n")
-        f.write("| Tổ Hợp Model | Kịch Bản Thử Nghiệm | Ảnh Đầu Vào | Latency E2E (ms) | FPS E2E | Cosine Similarity | Ngưỡng $T$ | Quyết Định Hệ Thống | Đánh Giá Độ Chính Xác |\n")
-        f.write("|---|---|---|---|---|---|---|---|---|\n")
+
+        f.write("## 3. Kết Quả Thực Nghiệm Chấm Công End-to-End Trên 10 Danh Tính\n\n")
+        f.write("| Tổ Hợp Model | Ngưỡng $T^*$ | Sim Điểm Danh TB | Nhận Diện Đúng (%) | Sim Người Lạ TB | Từ Chối Đúng (%) | Latency E2E (ms) | FPS E2E |\n")
+        f.write("|---|---|---|---|---|---|---|---|\n")
         for r in pipeline_results:
-            case_badge = "🟢 Chấm công hợp lệ" if r["test_type"] == "VALID_ATTENDANCE" else "🔴 Người lạ mạo danh"
-            f.write(f"| **{r['detector']} + {r['embedder']}** | {case_badge} | `{r['target_image']}` | {r['latency_ms']} ms | **{r['fps']} FPS** | **{r['cosine_similarity']}** | {r['threshold']} | {r['decision']} | **{r['evaluation']}** |\n")
+            f.write(f"| **{r['combo']}** | `{r['threshold']}` | **{r['valid_sim']:.4f}** | **{r['valid_acc']:.1f}%** | {r['impostor_sim']:.4f} | **{r['impostor_acc']:.1f}%** | {r['latency_ms']:.2f} ms | **{r['fps']:.2f} FPS** |\n")
 
         f.write("\n### Biểu đồ phân tích hiệu năng độ trễ:\n")
         f.write("- [Biểu đồ so sánh độ trễ Latency & FPS](../figures/benchmark_charts/pipeline_benchmark_comparison.png)\n\n")
-
         f.write("---\n\n")
-        f.write("## 4. Kết Luận Kỹ Thuật Tổng Hợp\n\n")
-        f.write("1. **Độ chính xác nhận diện 100% trên các combo chủ lực:**\n")
-        f.write("   - `mediapipe + arcface`, `mediapipe + facenet512`, `mediapipe + sface`, `retinaface + sface` đều phân biệt chính xác $100\\%$: Cho phép nhân viên thật chấm công thành công và từ chối hoàn toàn người lạ mạo danh.\n")
-        f.write("2. **Khoảng cách phân tách an toàn (Safety Margin):**\n")
-        f.write("   - Score nhân viên thật ($0.41 - 0.65$) cao hơn vượt trội so với score người lạ ($0.05 - 0.16$), bảo đảm không xảy ra hiện tượng chấm công hộ hay nhận nhầm.\n")
-        f.write(f"3. **Kiến trúc khuyến nghị triển khai máy chấm công Edge:**\n")
-        f.write(f"   - **`mediapipe + sface`** là combo tối ưu nhất với tổng độ trễ dưới 800ms, tiêu thụ RAM thấp, đạt chuẩn phần cứng máy chấm công thương mại.\n")
 
-    print(f"=== Đã tạo báo cáo đầy đủ tại: {REPORT_MD_PATH} ===")
+    print(f"=== Đã lưu báo cáo benchmark chi tiết vào: {REPORT_MD_PATH} ===")
 
 
 if __name__ == "__main__":

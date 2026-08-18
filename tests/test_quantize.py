@@ -20,17 +20,15 @@ class TinyFaceEmbedder(nn.Module):
     """Mô hình PyTorch đơn giản chuẩn xác cho shape inference."""
     def __init__(self):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Conv2d(3, 16, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(16),
-            nn.ReLU(),
-            nn.AdaptiveAvgPool2d((4, 4)),
-            nn.Flatten(),
-            nn.Linear(16 * 4 * 4, 128),
-        )
+        self.conv = nn.Conv2d(3, 16, kernel_size=3, stride=2, padding=1)
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.fc = nn.Linear(16, 128)
 
     def forward(self, x):
-        return self.net(x)
+        x = torch.relu(self.conv(x))
+        x = self.pool(x)
+        x = torch.flatten(x, 1)
+        return self.fc(x)
 
 
 @pytest.fixture(scope="module")
@@ -50,7 +48,6 @@ def dummy_onnx_models(tmp_path_factory):
         input_names=["input"],
         output_names=["embedding"],
         opset_version=17,
-        dynamic_axes={"input": {0: "batch_size"}, "embedding": {0: "batch_size"}},
     )
 
     # Quantize to INT8

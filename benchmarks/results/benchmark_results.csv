@@ -1,17 +1,12 @@
-phase,test_type,detector,embedder,target_image,latency_ms,fps,cpu_percent,avg_ram_mb,peak_ram_mb,cosine_similarity,decision,group,threshold,liveness_pass,evaluation
-1_detector_standalone,Standalone Detection,mediapipe,-,img_2.jpg,86.7,11.53,61.1,502.79,508.69,-,-,,,,
-1_detector_standalone,Standalone Detection,retinaface,-,img_2.jpg,683.84,1.46,98.35,649.43,663.71,-,-,,,,
-1_detector_standalone,Standalone Detection,yolov8,-,img_2.jpg,2685.04,0.37,48.92,755.69,818.7,-,-,,,,
-2_embedder_standalone,Standalone Embedding,-,arcface,Aligned Crop (112x112),1800.14,0.56,95.41,1105.1,1316.31,-,-,,,,
-2_embedder_standalone,Standalone Embedding,-,facenet512,Aligned Crop (112x112),2655.24,0.38,71.04,1343.88,1399.97,-,-,,,,
-2_embedder_standalone,Standalone Embedding,-,sface,Aligned Crop (112x112),155.86,6.42,60.07,1462.36,1482.21,-,-,,,,
-3_full_pipeline_matching,VALID_ATTENDANCE,mediapipe,arcface,img_2.jpg,1137.24,0.88,94.75,1519.68,1555.65,0.4114,Match (Dung Nhan Vien),Group_A (Best_Detector x 3_Embedders),0.3,True,✅ CHÍNH XÁC
-3_full_pipeline_matching,IMPOSTOR_ATTACK,mediapipe,arcface,img_3.jpg,781.4,1.28,98.99,1510.28,1529.68,0.1413,Rejected (Tu Choi),Group_A (Best_Detector x 3_Embedders),0.3,True,✅ CHÍNH XÁC
-3_full_pipeline_matching,VALID_ATTENDANCE,mediapipe,facenet512,img_2.jpg,2273.15,0.44,62.26,1533.94,1572.91,0.6477,Match (Dung Nhan Vien),Group_A (Best_Detector x 3_Embedders),0.25,True,✅ CHÍNH XÁC
-3_full_pipeline_matching,IMPOSTOR_ATTACK,mediapipe,facenet512,img_3.jpg,2034.42,0.49,62.35,1525.15,1548.9,0.1491,Rejected (Tu Choi),Group_A (Best_Detector x 3_Embedders),0.25,True,✅ CHÍNH XÁC
-3_full_pipeline_matching,VALID_ATTENDANCE,mediapipe,sface,img_2.jpg,523.55,1.91,87.82,1545.94,1578.15,0.3101,Match (Dung Nhan Vien),Group_A (Best_Detector x 3_Embedders),0.26,True,✅ CHÍNH XÁC
-3_full_pipeline_matching,IMPOSTOR_ATTACK,mediapipe,sface,img_3.jpg,248.74,4.02,81.33,1534.06,1547.33,0.1522,Rejected (Tu Choi),Group_A (Best_Detector x 3_Embedders),0.26,True,✅ CHÍNH XÁC
-3_full_pipeline_matching,VALID_ATTENDANCE,retinaface,sface,img_2.jpg,877.13,1.14,113.31,1659.21,1696.11,0.3732,Match (Dung Nhan Vien),Group_B (3_Detectors x Best_Embedder),0.26,True,✅ CHÍNH XÁC
-3_full_pipeline_matching,IMPOSTOR_ATTACK,retinaface,sface,img_3.jpg,773.44,1.29,107.05,1655.2,1673.18,0.0656,Rejected (Tu Choi),Group_B (3_Detectors x Best_Embedder),0.26,True,✅ CHÍNH XÁC
-3_full_pipeline_matching,VALID_ATTENDANCE,yolov8,sface,img_2.jpg,779.05,1.28,96.96,1571.23,1604.78,0.1287,Rejected (Tu Choi),Group_B (3_Detectors x Best_Embedder),0.26,True,❌ SAI
-3_full_pipeline_matching,IMPOSTOR_ATTACK,yolov8,sface,img_3.jpg,416.49,2.4,153.36,1560.34,1576.96,0.008,Rejected (Tu Choi),Group_B (3_Detectors x Best_Embedder),0.26,True,✅ CHÍNH XÁC
+﻿phase,test_type,detector,embedder,target_image,latency_ms,fps,cpu_percent,avg_ram_mb,peak_ram_mb,cosine_similarity,decision
+1_detector_standalone,Standalone Detection,mediapipe,-,img_2.jpg,31.11,32.15,116.9,529.96,536.04,-,-
+1_detector_standalone,Standalone Detection,retinaface,-,img_2.jpg,324.71,3.08,171.33,688.31,688.51,-,-
+1_detector_standalone,Standalone Detection,yolov8,-,img_2.jpg,139.05,7.19,204.96,845.69,846.8,-,-
+2_embedder_standalone,Standalone Embedding,-,arcface,Aligned Crop (112x112),618.95,1.62,103.66,1313.68,1313.77,-,-
+2_embedder_standalone,Standalone Embedding,-,facenet512,Aligned Crop (112x112),497.8,2.01,98.51,1425.55,1425.69,-,-
+2_embedder_standalone,Standalone Embedding,-,sface,Aligned Crop (112x112),36.5,27.4,74.83,1504.62,1504.62,-,-
+3_pipeline_e2e,Valid Attendance,mediapipe,arcface,10 Persons Test,661.88,1.51,99.96,1542.13,1585.77,0.4969,Acc: 100.0%
+3_pipeline_e2e,Valid Attendance,mediapipe,facenet512,10 Persons Test,1341.62,0.75,72.1,1557.15,1601.36,0.6907,Acc: 100.0%
+3_pipeline_e2e,Valid Attendance,mediapipe,sface,10 Persons Test,334.3,2.99,60.5,1565.45,1604.36,0.5197,Acc: 80.0%
+3_pipeline_e2e,Valid Attendance,retinaface,sface,10 Persons Test,936.66,1.07,89.51,1685.84,1723.14,0.5852,Acc: 100.0%
+3_pipeline_e2e,Valid Attendance,yolov8,sface,10 Persons Test,1254.13,0.8,59.43,1610.74,1660.73,0.4533,Acc: 80.0%
