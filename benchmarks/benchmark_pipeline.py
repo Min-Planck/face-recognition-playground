@@ -67,15 +67,26 @@ def main():
 
     thresholds_map = load_calibrated_thresholds()
 
-    # Nạp 10 danh tính (mỗi danh tính gồm 2 ảnh: Ảnh A = Đăng ký, Ảnh B = Chấm công)
     person_data = []
     for p_id in range(1, 11):
         idx_a = (p_id - 1) * 2 + 1
         idx_b = (p_id - 1) * 2 + 2
         path_a = find_image_file(idx_a)
         path_b = find_image_file(idx_b)
-        img_a = cv2.imread(path_a)
-        img_b = cv2.imread(path_b)
+
+        with open(path_a, "rb") as f:
+            img_a = cv2.imdecode(np.frombuffer(f.read(), np.uint8), cv2.IMREAD_COLOR)
+        with open(path_b, "rb") as f:
+            img_b = cv2.imdecode(np.frombuffer(f.read(), np.uint8), cv2.IMREAD_COLOR)
+
+        # Chuẩn hóa về tỷ lệ webcam thực tế nếu ảnh quá lớn
+        if img_a.shape[1] > 640:
+            scale_a = 640.0 / img_a.shape[1]
+            img_a = cv2.resize(img_a, (640, int(img_a.shape[0] * scale_a)))
+        if img_b.shape[1] > 640:
+            scale_b = 640.0 / img_b.shape[1]
+            img_b = cv2.resize(img_b, (640, int(img_b.shape[0] * scale_b)))
+
         person_data.append({
             "id": f"NV{p_id:03d}",
             "name": f"Nhan Vien {p_id:02d}",

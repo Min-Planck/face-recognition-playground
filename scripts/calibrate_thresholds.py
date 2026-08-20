@@ -50,13 +50,18 @@ def main():
         
         path_a = find_image_file(idx_a)
         path_b = find_image_file(idx_b)
-        
-        img_a = cv2.imread(path_a)
-        img_b = cv2.imread(path_b)
-        
+
+        try:
+            with open(path_a, "rb") as f:
+                img_a = cv2.imdecode(np.frombuffer(f.read(), np.uint8), cv2.IMREAD_COLOR)
+            with open(path_b, "rb") as f:
+                img_b = cv2.imdecode(np.frombuffer(f.read(), np.uint8), cv2.IMREAD_COLOR)
+        except Exception as e:
+            raise ValueError(f"Lỗi đọc ảnh cho Person {p_id}: {path_a} hoặc {path_b} ({e})")
+
         if img_a is None or img_b is None:
             raise ValueError(f"Lỗi đọc ảnh cho Person {p_id}: {path_a} hoặc {path_b}")
-            
+
         person_images[p_id] = (img_a, img_b)
         person_names[p_id] = (os.path.basename(path_a), os.path.basename(path_b))
         print(f"  Person {p_id:02d}: Ảnh 1 = {person_names[p_id][0]} | Ảnh 2 = {person_names[p_id][1]}")

@@ -72,10 +72,17 @@ def load_pipeline_config() -> dict:
         with open(cfg_path, "r", encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
     return {
+        "pipeline": {
+            "detector": "mediapipe",
+            "embedder": "sface",
+            "threshold": 0.36,
+        },
         "thresholds": {
-            "sface": 0.32,
-            "arcface": 0.24,
-            "facenet512": 0.53,
+            "sface": 0.36,
+            "arcface": 0.30,
+            "facenet512": 0.52,
+            "arcface_int8": 0.30,
+            "facenet512_int8": 0.52,
         }
     }
 
@@ -143,31 +150,43 @@ def draw_styled_detection(image: np.ndarray, bbox: tuple, label: str, is_match: 
 # SIDEBAR: CẤU HÌNH HỆ THỐNG & QUẢN LÝ MÔ HÌNH
 # ==============================================================================
 pipeline_cfg = load_pipeline_config()
+default_detector_cfg = pipeline_cfg.get("pipeline", {}).get("detector", "mediapipe")
+default_embedder_cfg = pipeline_cfg.get("pipeline", {}).get("embedder", "sface")
+
 calibrated_thresholds = pipeline_cfg.get("thresholds", {
-    "sface": 0.32,
-    "arcface": 0.24,
-    "facenet512": 0.53,
+    "sface": 0.36,
+    "arcface": 0.30,
+    "facenet512": 0.52,
+    "arcface_int8": 0.30,
+    "facenet512_int8": 0.52,
 })
 
 st.sidebar.title("Cấu Hình Pipeline")
 
-st.sidebar.subheader("1. Lựa Chọn Mô Hình AI")
+st.sidebar.subheader("1. Lựa Chọn Mô Hình AI (ONNX)")
+detector_options = ["mediapipe", "retinaface", "yolov8"]
+detector_idx = detector_options.index(default_detector_cfg) if default_detector_cfg in detector_options else 0
+
 detector_choice = st.sidebar.selectbox(
     "Face Detector (Bộ Phát Hiện):",
-    options=["mediapipe", "retinaface", "yolov8"],
-    index=0,
-    help="MediaPipe: Siêu nhẹ cho Edge CPU (~36ms) | RetinaFace: Chuẩn xác cao | YOLOv8: Cân bằng",
+    options=detector_options,
+    index=detector_idx,
+    help="MediaPipe: C++ TFLite (~10ms) | RetinaFace: InsightFace ONNX (~380ms) | YOLOv8: ONNX Runtime (~164ms)",
 )
+
+embedder_options = ["sface", "arcface", "arcface_int8", "facenet512", "facenet512_int8"]
+embedder_idx = embedder_options.index(default_embedder_cfg) if default_embedder_cfg in embedder_options else 0
 
 embedder_choice = st.sidebar.selectbox(
     "Face Embedder (Bộ Trích Xuất):",
-    options=["sface", "arcface", "facenet512"],
-    index=0,
-    help="SFace: 128-D siêu nhanh (~41ms) | ArcFace: 512-D bảo mật cao | FaceNet512: 512-D",
+    options=embedder_options,
+    index=embedder_idx,
+    help="SFace: ONNX 128-D (37MB) | ArcFace FP32 (130MB) | ArcFace INT8 (33MB) | FaceNet512 FP32 (90MB) | FaceNet512 INT8 (23MB)",
 )
 
 st.sidebar.subheader("2. Tham Số Nhận Diện")
-default_th_for_choice = float(calibrated_thresholds.get(embedder_choice, 0.32))
+base_key = embedder_choice.replace("_int8", "").replace("_fp32", "")
+default_th_for_choice = float(calibrated_thresholds.get(embedder_choice, calibrated_thresholds.get(base_key, 0.36)))
 
 threshold_val = st.sidebar.slider(
     "Ngưỡng Chấp Nhận (Cosine Threshold T):",
@@ -175,7 +194,7 @@ threshold_val = st.sidebar.slider(
     max_value=0.85,
     value=default_th_for_choice,
     step=0.01,
-    help=f"Ngưỡng tối ưu hiệu chuẩn thực nghiệm cho {embedder_choice.upper()} là {default_th_for_choice:.2f}",
+    help=f"Ngưỡng tối ưu thực nghiệm cho {embedder_choice.upper()} là T* = {default_th_for_choice:.2f}",
 )
 
 enable_clahe = st.sidebar.checkbox(

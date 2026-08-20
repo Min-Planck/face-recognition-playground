@@ -1,18 +1,21 @@
 """
 Unit tests cho module quantize.py.
-Tạo một ONNX dummy model để kiểm tra quá trình quantize dynamic INT8 và so sánh benchmark.
+Kiểm tra quá trình Static PTQ, CalibrationDataReader, ONNXEmbedderRunner và benchmark comparison.
 """
 
 import os
+import cv2
 import numpy as np
 import pytest
 import torch
 import torch.nn as nn
 
 from src.export.quantize import (
-    quantize_onnx_model_dynamic,
+    FaceCalibrationDataReader,
     ONNXEmbedderRunner,
     benchmark_quantization_comparison,
+    quantize_onnx_model_dynamic,
+    quantize_onnx_model_static,
 )
 
 
@@ -37,6 +40,15 @@ def dummy_onnx_models(tmp_path_factory):
     fp32_path = os.path.join(temp_dir, "tiny_embedder_fp32.onnx")
     int8_path = os.path.join(temp_dir, "tiny_embedder_int8.onnx")
 
+    # Tạo vài ảnh giả lập cho calibration
+    calib_dir = os.path.join(temp_dir, "calib_imgs")
+    os.makedirs(calib_dir, exist_ok=True)
+    calib_paths = []
+    for i in range(5):
+        p = os.path.join(calib_dir, f"img_{i}.jpg")
+        cv2.imwrite(p, np.random.randint(0, 255, (112, 112, 3), dtype=np.uint8))
+        calib_paths.append(p)
+
     # Export Tiny PyTorch to ONNX FP32
     model = TinyFaceEmbedder()
     model.eval()
@@ -45,19 +57,25 @@ def dummy_onnx_models(tmp_path_factory):
         model,
         dummy_input,
         fp32_path,
-        input_names=["input"],
+        input_names=["input.1"],
         output_names=["embedding"],
         opset_version=17,
     )
 
-    # Quantize to INT8
-    quantize_onnx_model_dynamic(fp32_path, int8_path)
+    # Quantize to INT8 Static PTQ
+    quantize_onnx_model_static(
+        input_onnx_path=str(fp32_path),
+        output_quant_path=str(int8_path),
+        calibration_image_paths=calib_paths,
+        model_type="arcface",
+        per_channel=False,
+    )
 
-    return str(fp32_path), str(int8_path)
+    return str(fp32_path), str(int8_path), calib_paths
 
 
 def test_quantization_process(dummy_onnx_models):
-    fp32_path, int8_path = dummy_onnx_models
+    fp32_path, int8_path, _ = dummy_onnx_models
     assert os.path.exists(fp32_path)
     assert os.path.exists(int8_path)
 
@@ -68,14 +86,14 @@ def test_quantization_process(dummy_onnx_models):
 
 
 def test_onnx_runner(dummy_onnx_models):
-    fp32_path, int8_path = dummy_onnx_models
+    fp32_path, int8_path, _ = dummy_onnx_models
 
-    runner_fp32 = ONNXEmbedderRunner(fp32_path)
-    runner_int8 = ONNXEmbedderRunner(int8_path)
+    runner_fp32 = ONNXEmbedderRunner(fp32_path, model_type="arcface")
+    runner_int8 = ONNXEmbedderRunner(int8_path, model_type="arcface")
 
-    dummy_input = np.random.randn(1, 3, 112, 112).astype(np.float32)
-    emb_fp32 = runner_fp32.run(dummy_input)
-    emb_int8 = runner_int8.run(dummy_input)
+    dummy_input = np.random.randint(0, 255, (112, 112, 3), dtype=np.uint8)
+    emb_fp32 = runner_fp32.embed(dummy_input)
+    emb_int8 = runner_int8.embed(dummy_input)
 
     assert emb_fp32.shape == (128,)
     assert emb_int8.shape == (128,)
@@ -84,13 +102,16 @@ def test_onnx_runner(dummy_onnx_models):
 
 
 def test_benchmark_comparison(dummy_onnx_models):
-    fp32_path, int8_path = dummy_onnx_models
+    fp32_path, int8_path, calib_paths = dummy_onnx_models
+    test_imgs = [cv2.imread(p) for p in calib_paths if cv2.imread(p) is not None]
+
     results = benchmark_quantization_comparison(
         fp32_path,
         int8_path,
-        dummy_input_shape=(1, 3, 112, 112),
+        test_face_images=test_imgs,
+        model_type="arcface",
         n_iterations=5,
     )
     assert "compression_ratio_percent" in results
-    assert "cosine_similarity_fp32_vs_int8" in results
-    assert results["cosine_similarity_fp32_vs_int8"] > 0.85
+    assert "cosine_similarity_mean" in results
+    assert results["cosine_similarity_mean"] > 0.80

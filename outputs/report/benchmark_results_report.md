@@ -8,11 +8,11 @@ Báo cáo đo đạc hiệu năng thực tế trên toàn bộ tập dữ liệu
 
 | Detector | Tốc độ (FPS) | Độ trễ Thuần (ms) | CPU (%) | RAM TB (MB) | Peak RAM (MB) |
 |---|---|---|---|---|---|
-| **mediapipe** | **32.15** | 31.11 ms | 116.9% | 530.0 MB | 536.0 MB |
-| **retinaface** | **3.08** | 324.71 ms | 171.3% | 688.3 MB | 688.5 MB |
-| **yolov8** | **7.19** | 139.05 ms | 205.0% | 845.7 MB | 846.8 MB |
+| **mediapipe** | **99.49** | 10.05 ms | 252.0% | 494.2 MB | 494.2 MB |
+| **retinaface** | **2.62** | 381.59 ms | 167.1% | 665.5 MB | 665.7 MB |
+| **yolov8** | **6.09** | 164.31 ms | 277.1% | 608.9 MB | 615.1 MB |
 
-🏆 **Best Performance Detector:** `mediapipe` (Tốc độ 32.1 FPS, nhẹ nhất trên Edge CPU).
+🏆 **Best Performance Detector:** `mediapipe` (Tốc độ 99.5 FPS, nhẹ nhất trên Edge CPU).
 
 ---
 
@@ -20,11 +20,11 @@ Báo cáo đo đạc hiệu năng thực tế trên toàn bộ tập dữ liệu
 
 | Embedder | Vector Dim | Tốc độ (FPS) | Độ trễ Thuần (ms) | CPU (%) | RAM TB (MB) | Peak RAM (MB) |
 |---|---|---|---|---|---|---|
-| **arcface** | 512-D | **1.62** | 618.95 ms | 103.7% | 1313.7 MB | 1313.8 MB |
-| **facenet512** | 512-D | **2.01** | 497.80 ms | 98.5% | 1425.6 MB | 1425.7 MB |
-| **sface** | 128-D | **27.40** | 36.50 ms | 74.8% | 1504.6 MB | 1504.6 MB |
+| **arcface** | 512-D | **6.01** | 166.41 ms | 227.3% | 909.6 MB | 909.6 MB |
+| **facenet512** | 512-D | **28.88** | 34.63 ms | 245.2% | 812.1 MB | 812.1 MB |
+| **sface** | 128-D | **18.86** | 53.02 ms | 210.8% | 706.0 MB | 706.0 MB |
 
-🏆 **Best Performance Embedder:** `sface` (Độ trễ chỉ 36.50 ms, tối ưu Edge).
+🏆 **Best Performance Embedder:** `facenet512` (Độ trễ chỉ 34.63 ms, tối ưu Edge).
 
 ---
 
@@ -32,11 +32,11 @@ Báo cáo đo đạc hiệu năng thực tế trên toàn bộ tập dữ liệu
 
 | Tổ Hợp Model | Ngưỡng $T^*$ | Sim Điểm Danh TB | Nhận Diện Đúng (%) | Sim Người Lạ TB | Từ Chối Đúng (%) | Latency E2E (ms) | FPS E2E |
 |---|---|---|---|---|---|---|---|
-| **mediapipe + arcface** | `0.24` | **0.4969** | **100.0%** | 0.2497 | **30.0%** | 668.32 ms | **1.50 FPS** |
-| **mediapipe + facenet512** | `0.53` | **0.6907** | **100.0%** | 0.3983 | **80.0%** | 1475.68 ms | **0.68 FPS** |
-| **mediapipe + sface** | `0.32` | **0.5197** | **80.0%** | 0.3766 | **30.0%** | 282.29 ms | **3.54 FPS** |
-| **retinaface + sface** | `0.32` | **0.5852** | **100.0%** | 0.2295 | **100.0%** | 995.94 ms | **1.00 FPS** |
-| **yolov8 + sface** | `0.32` | **0.4533** | **80.0%** | 0.3219 | **50.0%** | 866.87 ms | **1.15 FPS** |
+| **mediapipe + arcface** | `0.3` | **0.5311** | **100.0%** | 0.2615 | **60.0%** | 192.02 ms | **5.21 FPS** |
+| **mediapipe + facenet512** | `0.52` | **0.6884** | **90.0%** | 0.3676 | **70.0%** | 113.79 ms | **8.79 FPS** |
+| **mediapipe + sface** | `0.36` | **0.5156** | **60.0%** | 0.4199 | **10.0%** | 69.64 ms | **14.36 FPS** |
+| **retinaface + facenet512** | `0.52` | **0.7363** | **100.0%** | 0.3760 | **70.0%** | 381.54 ms | **2.62 FPS** |
+| **yolov8 + facenet512** | `0.52` | **0.7237** | **90.0%** | 0.3765 | **90.0%** | 308.02 ms | **3.25 FPS** |
 
 ### Biểu đồ phân tích hiệu năng độ trễ:
 - [Biểu đồ so sánh độ trễ Latency & FPS](../figures/benchmark_charts/pipeline_benchmark_comparison.png)

@@ -1,12 +1,12 @@
 ﻿phase,test_type,detector,embedder,target_image,latency_ms,fps,cpu_percent,avg_ram_mb,peak_ram_mb,cosine_similarity,decision
-1_detector_standalone,Standalone Detection,mediapipe,-,img_2.jpg,31.11,32.15,116.9,529.96,536.04,-,-
-1_detector_standalone,Standalone Detection,retinaface,-,img_2.jpg,324.71,3.08,171.33,688.31,688.51,-,-
-1_detector_standalone,Standalone Detection,yolov8,-,img_2.jpg,139.05,7.19,204.96,845.69,846.8,-,-
-2_embedder_standalone,Standalone Embedding,-,arcface,Aligned Crop (112x112),618.95,1.62,103.66,1313.68,1313.77,-,-
-2_embedder_standalone,Standalone Embedding,-,facenet512,Aligned Crop (112x112),497.8,2.01,98.51,1425.55,1425.69,-,-
-2_embedder_standalone,Standalone Embedding,-,sface,Aligned Crop (112x112),36.5,27.4,74.83,1504.62,1504.62,-,-
-3_pipeline_e2e,Valid Attendance,mediapipe,arcface,10 Persons Test,661.88,1.51,99.96,1542.13,1585.77,0.4969,Acc: 100.0%
-3_pipeline_e2e,Valid Attendance,mediapipe,facenet512,10 Persons Test,1341.62,0.75,72.1,1557.15,1601.36,0.6907,Acc: 100.0%
-3_pipeline_e2e,Valid Attendance,mediapipe,sface,10 Persons Test,334.3,2.99,60.5,1565.45,1604.36,0.5197,Acc: 80.0%
-3_pipeline_e2e,Valid Attendance,retinaface,sface,10 Persons Test,936.66,1.07,89.51,1685.84,1723.14,0.5852,Acc: 100.0%
-3_pipeline_e2e,Valid Attendance,yolov8,sface,10 Persons Test,1254.13,0.8,59.43,1610.74,1660.73,0.4533,Acc: 80.0%
+1_detector_standalone,Standalone Detection,mediapipe,-,img_2.jpg,10.05,99.49,252.0,494.16,494.16,-,-
+1_detector_standalone,Standalone Detection,retinaface,-,img_2.jpg,381.59,2.62,167.09,665.5,665.7,-,-
+1_detector_standalone,Standalone Detection,yolov8,-,img_2.jpg,164.31,6.09,277.06,608.91,615.15,-,-
+2_embedder_standalone,Standalone Embedding,-,arcface,Aligned Crop (112x112),166.41,6.01,227.35,909.62,909.62,-,-
+2_embedder_standalone,Standalone Embedding,-,facenet512,Aligned Crop (112x112),34.63,28.88,245.23,812.11,812.11,-,-
+2_embedder_standalone,Standalone Embedding,-,sface,Aligned Crop (112x112),53.02,18.86,210.84,705.99,705.99,-,-
+3_pipeline_e2e,Valid Attendance,mediapipe,arcface,10 Persons Test,184.86,5.41,290.04,878.7,883.03,0.5311,Acc: 100.0%
+3_pipeline_e2e,Valid Attendance,mediapipe,facenet512,10 Persons Test,109.67,9.12,246.67,787.36,793.36,0.6884,Acc: 90.0%
+3_pipeline_e2e,Valid Attendance,mediapipe,sface,10 Persons Test,67.68,14.78,347.94,695.01,702.68,0.5156,Acc: 60.0%
+3_pipeline_e2e,Valid Attendance,retinaface,facenet512,10 Persons Test,359.5,2.78,240.82,921.56,924.98,0.7363,Acc: 100.0%
+3_pipeline_e2e,Valid Attendance,yolov8,facenet512,10 Persons Test,291.31,3.43,324.02,871.26,878.51,0.7237,Acc: 90.0%

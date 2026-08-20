@@ -305,53 +305,113 @@ class MediaPipeDetector(BaseDetector):
 
 class YOLOv8Detector(BaseDetector):
     """
-    Detector YOLOv8-Face: Sử dụng mô hình chuyên biệt phát hiện khuôn mặt YOLOv8-Face (`yolov8n-face.pt`).
+    Detector YOLOv8-Face: Sử dụng mô hình ONNX Runtime (`models/yolov8n-face.onnx`).
+    Hoàn toàn không cần PyTorch khi suy luận, giúp tiết kiệm bộ nhớ RAM và tăng tốc tối đa trên CPU.
     """
 
     MODEL_URL = "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8n.pt"
 
-    def __init__(self, conf_threshold: float = 0.4, model_path: str = "models/yolov8n-face.pt"):
+    def __init__(
+        self,
+        conf_threshold: float = 0.4,
+        model_path: str = "models/yolov8n-face.onnx",
+        nms_threshold: float = 0.45,
+    ):
         self.conf_threshold = conf_threshold
+        self.nms_threshold = nms_threshold
         self.model_path = model_path
         self._ensure_model_exists()
-        from ultralytics import YOLO
-        self.model = YOLO(self.model_path)
+
+        import onnxruntime as ort
+
+        sess_options = ort.SessionOptions()
+        sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        sess_options.intra_op_num_threads = 4
+
+        self.session = ort.InferenceSession(
+            self.model_path,
+            sess_options=sess_options,
+            providers=["CPUExecutionProvider"],
+        )
+        self.input_name = self.session.get_inputs()[0].name
+        self.output_name = self.session.get_outputs()[0].name
 
     def _ensure_model_exists(self):
-        """Tự động tải file trọng số YOLOv8-face nếu chưa có sẵn."""
+        """Tự động chuẩn bị file mô hình ONNX nếu chưa có sẵn."""
         if not os.path.exists(self.model_path):
             os.makedirs(os.path.dirname(self.model_path) if os.path.dirname(self.model_path) else ".", exist_ok=True)
-            print(f"Đang tải trọng số YOLOv8-Face từ {self.MODEL_URL}...")
-            urllib.request.urlretrieve(self.MODEL_URL, self.model_path)
-            print("Tải hoàn tất!")
+            # Kiểm tra xem có file script export không
+            try:
+                from scripts.export_onnx_models import export_yolov8_onnx
+                export_yolov8_onnx()
+            except Exception:
+                pt_path = os.path.join(os.path.dirname(self.model_path), "yolov8n-face.pt")
+                if not os.path.exists(pt_path):
+                    print(f"Đang tải trọng số YOLOv8-Face từ {self.MODEL_URL}...")
+                    urllib.request.urlretrieve(self.MODEL_URL, pt_path)
+                from ultralytics import YOLO
+                yolo = YOLO(pt_path)
+                yolo.export(format="onnx", opset=17)
 
     def detect(self, image: np.ndarray) -> List[FaceBox]:
         if image is None or image.size == 0:
             return []
 
         h, w = image.shape[:2]
-        results = self.model(image, verbose=False, conf=self.conf_threshold)
 
-        if not results or len(results[0].boxes) == 0:
+        # 1. Tiền xử lý Letterbox về 640x640 chuẩn YOLOv8
+        scale = min(640.0 / h, 640.0 / w)
+        nw, nh = int(round(w * scale)), int(round(h * scale))
+        resized = cv2.resize(image, (nw, nh))
+        pad_x = (640 - nw) // 2
+        pad_y = (640 - nh) // 2
+
+        canvas = np.full((640, 640, 3), 114, dtype=np.uint8)
+        canvas[pad_y : pad_y + nh, pad_x : pad_x + nw] = resized
+        # Chuẩn hóa BGR -> RGB và [0, 1] NCHW
+        rgb_canvas = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+        blob = (rgb_canvas.transpose(2, 0, 1) / 255.0).astype(np.float32)[np.newaxis, ...]
+
+        # 2. Suy luận qua ONNX Runtime
+        outputs = self.session.run([self.output_name], {self.input_name: blob})[0]
+        preds = outputs[0].T  # Shape: (8400, 5) -> [cx, cy, bw, bh, score]
+
+        # 3. Lọc ngưỡng và chuyển đổi tọa độ
+        boxes_xywh = []
+        confidences = []
+        for row in preds:
+            score = float(row[4])
+            if score >= self.conf_threshold:
+                cx, cy, bw, bh = row[:4]
+                x1 = max(0, int((cx - bw / 2.0 - pad_x) / scale))
+                y1 = max(0, int((cy - bh / 2.0 - pad_y) / scale))
+                x2 = min(w, int((cx + bw / 2.0 - pad_x) / scale))
+                y2 = min(h, int((cy + bh / 2.0 - pad_y) / scale))
+                box_w = max(0, x2 - x1)
+                box_h = max(0, y2 - y1)
+                if box_w > 0 and box_h > 0:
+                    boxes_xywh.append([x1, y1, box_w, box_h])
+                    confidences.append(score)
+
+        if not boxes_xywh:
             return []
 
+        # 4. Non-Maximum Suppression (NMS)
+        indices = cv2.dnn.NMSBoxes(
+            boxes_xywh,
+            confidences,
+            score_threshold=self.conf_threshold,
+            nms_threshold=self.nms_threshold,
+        )
+        indices = indices.flatten() if hasattr(indices, "flatten") else indices
+
         face_boxes = []
-        r = results[0]
+        for idx in indices:
+            i = int(idx)
+            bx, by, bw, bh = boxes_xywh[i]
+            conf = confidences[i]
 
-        for i in range(len(r.boxes)):
-            conf = float(r.boxes.conf[i])
-            if conf < self.conf_threshold:
-                continue
-
-            xyxy = r.boxes.xyxy.cpu().numpy()[i]
-            x1, y1, x2, y2 = xyxy
-
-            bx = max(0, int(x1))
-            by = max(0, int(y1))
-            bw = min(w - bx, int(max(0, x2 - x1)))
-            bh = min(h - by, int(max(0, y2 - y1)))
-
-            # Crop khuôn mặt với 10% margin và resize về chuẩn 112x112
+            # Crop khuôn mặt với 8% margin và chuẩn hóa về 112x112
             crop_mx = int(bw * 0.08)
             crop_my = int(bh * 0.08)
             cx1 = max(0, bx - crop_mx)
@@ -362,16 +422,15 @@ class YOLOv8Detector(BaseDetector):
             face_crop = image[cy1:cy2, cx1:cx2]
             aligned_face = cv2.resize(face_crop, (112, 112)) if face_crop.size > 0 else None
 
-            if bw > 0 and bh > 0:
-                face_boxes.append(FaceBox(
-                    x=bx,
-                    y=by,
-                    w=bw,
-                    h=bh,
-                    confidence=conf,
-                    landmarks=None,
-                    aligned_face=aligned_face,
-                ))
+            face_boxes.append(FaceBox(
+                x=bx,
+                y=by,
+                w=bw,
+                h=bh,
+                confidence=conf,
+                landmarks=None,
+                aligned_face=aligned_face,
+            ))
 
         return face_boxes
 
