@@ -11,6 +11,14 @@ from typing import Any, Dict, List, Optional
 import psutil
 
 
+# Instance Process toàn cục được khởi tạo và mồi baseline ngay khi nạp module
+_GLOBAL_PROCESS = psutil.Process(os.getpid())
+try:
+    _GLOBAL_PROCESS.cpu_percent(interval=None)
+except Exception:
+    pass
+
+
 class ResourceMonitor:
     """
     Context manager theo dõi CPU % và RAM (MB) của tiến trình hiện tại.
@@ -19,7 +27,7 @@ class ResourceMonitor:
 
     def __init__(self, interval: float = 0.05):
         self.interval = interval
-        self.process = psutil.Process(os.getpid())
+        self.process = _GLOBAL_PROCESS
         self._cpu_samples: List[float] = []
         self._ram_samples: List[float] = []
         self._running = False
@@ -92,14 +100,22 @@ class ResourceMonitor:
         }
 
     @staticmethod
+    def prime_cpu() -> None:
+        """Mồi lại baseline bộ đếm CPU ngay trước một khối tính toán."""
+        try:
+            _GLOBAL_PROCESS.cpu_percent(interval=None)
+        except Exception:
+            pass
+
+    @staticmethod
     def get_current_usage() -> tuple[float, float]:
         """
-        Lấy tức thời thông số CPU % và RAM (MB) của tiến trình hiện tại.
+        Lấy tức thời thông số CPU % và RAM (MB) của riêng tiến trình hiện tại
+        tính từ lần gọi mồi baseline gần nhất.
 
         Returns:
             tuple[float, float]: (cpu_percent, ram_mb)
         """
-        process = psutil.Process(os.getpid())
-        ram_mb = process.memory_info().rss / (1024.0 * 1024.0)
-        cpu_percent = psutil.cpu_percent(interval=None)
+        ram_mb = _GLOBAL_PROCESS.memory_info().rss / (1024.0 * 1024.0)
+        cpu_percent = _GLOBAL_PROCESS.cpu_percent(interval=None)
         return cpu_percent, ram_mb

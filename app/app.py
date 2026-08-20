@@ -38,7 +38,7 @@ if PROJECT_ROOT not in sys.path:
 if CURRENT_DIR not in sys.path:
     sys.path.insert(0, CURRENT_DIR)
 
-from src.detectors.detector_factory import get_detector, extract_aligned_face
+from src.detectors.detector_factory import get_detector
 from src.embedders.embedder_factory import get_embedder
 from src.matching.matcher import SessionFaceStore, compute_cosine_similarity
 from src.preprocessing.clahe import preprocess_image
@@ -266,7 +266,8 @@ with tab_attendance:
             detector = load_cached_detector(detector_choice)
             embedder = load_cached_embedder(embedder_choice)
 
-            # Bấm giờ inference thuần
+            # Mồi baseline CPU và bấm giờ inference thuần
+            ResourceMonitor.prime_cpu()
             t_start = time.perf_counter()
 
             # 1. Tiền xử lý CLAHE
@@ -283,8 +284,12 @@ with tab_attendance:
             else:
                 face_box = max(boxes, key=lambda b: b.w * b.h)
 
-                # 3. Alignment & Crop 112x112 (Contiguous Buffer qua helper chuẩn)
-                aligned_crop = extract_aligned_face(detector, infer_mat, apply_clahe=enable_clahe)
+                # 3. Alignment & Crop 112x112 (Lấy trực tiếp từ kết quả detect, không gọi lại CLAHE/Detector)
+                if face_box.aligned_face is not None:
+                    aligned_crop = np.ascontiguousarray(face_box.aligned_face.copy(), dtype=np.uint8)
+                else:
+                    raw_crop = face_box.get_crop(processed_mat, margin=0.1)
+                    aligned_crop = np.ascontiguousarray(cv2.resize(raw_crop, (112, 112)), dtype=np.uint8)
 
                 # 4. Feature Embedding
                 query_vec = embedder.embed(aligned_crop)
@@ -387,7 +392,13 @@ with tab_enroll:
                 st.warning("Không phát hiện khuôn mặt! Vui lòng chụp rõ mặt hơn.")
             else:
                 face_box = max(boxes, key=lambda b: b.w * b.h)
-                aligned_crop = extract_aligned_face(detector, enr_mat, apply_clahe=enable_clahe)
+
+                # Lấy trực tiếp ảnh 112x112 từ kết quả detect
+                if face_box.aligned_face is not None:
+                    aligned_crop = np.ascontiguousarray(face_box.aligned_face.copy(), dtype=np.uint8)
+                else:
+                    raw_crop = face_box.get_crop(prep_enr, margin=0.1)
+                    aligned_crop = np.ascontiguousarray(cv2.resize(raw_crop, (112, 112)), dtype=np.uint8)
 
                 vis_enr = draw_styled_detection(enr_mat, face_box.bbox, f"Enroll: {person_name or 'New'}", is_match=True)
 
