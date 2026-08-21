@@ -9,9 +9,9 @@ pipeline:
 # kết hợp 3,600 lượt so khớp cặp ảnh stress-test (thiếu sáng, ngược sáng, góc nghiêng, nhiễu hạt).
 # Nếu triển khai trên dữ liệu phòng mới, hãy chạy lại scripts/calibrate_thresholds.py để cập nhật.
 thresholds:
-  sface: 0.36                  # Ngưỡng tối ưu SFace (128-D, EER Optimal = 0.357)
-  arcface: 0.30                # Ngưỡng tối ưu ArcFace (512-D, EER Optimal = 0.296)
-  facenet512: 0.52             # Ngưỡng tối ưu FaceNet512 (512-D, EER Optimal = 0.516)
+  sface: 0.34                  # Ngưỡng tối ưu SFace (128-D, EER Optimal = 0.336)
+  arcface: 0.26                # Ngưỡng tối ưu ArcFace (512-D, EER Optimal = 0.257)
+  facenet512: 0.52             # Ngưỡng tối ưu FaceNet512 (512-D, EER Optimal = 0.517)
 
 preprocessing:
   clahe:

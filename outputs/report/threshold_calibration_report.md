@@ -10,24 +10,24 @@ Báo cáo kiểm thử định lượng độ chính xác sinh trắc học trê
 
 | Model Embedder | Vector Dim | Mean Genuine | Min Genuine | Mean Impostor | Max Impostor | Separation Margin $\Delta$ | EER (%) | ROC AUC | Ngưỡng Khuyến Nghị $T^*$ |
 |---|---|---|---|---|---|---|---|---|---|
-| **arcface** | 512-D | 0.4818 | **0.0546** | 0.0941 | **0.8323** | **-0.7777** | **5.20%** | **0.9812** | **`0.296`** |
-| **facenet512** | 512-D | 0.6815 | **0.4338** | 0.1553 | **0.6312** | **-0.1974** | **3.81%** | **0.9951** | **`0.516`** |
-| **sface** | 128-D | 0.4513 | **0.126** | 0.2786 | **0.5833** | **-0.4573** | **25.25%** | **0.8351** | **`0.357`** |
+| **arcface** | 512-D | 0.4725 | **0.0689** | 0.0805 | **0.8342** | **-0.7653** | **8.16%** | **0.9733** | **`0.257`** |
+| **facenet512** | 512-D | 0.6806 | **0.3941** | 0.1455 | **0.6104** | **-0.2163** | **3.81%** | **0.9947** | **`0.517`** |
+| **sface** | 128-D | 0.4266 | **0.0808** | 0.2579 | **0.5991** | **-0.5183** | **26.42%** | **0.8119** | **`0.336`** |
 ---
 
 ## 2. Phân Tích Đường Cong Lỗi FAR/FRR & Phân Bố Điểm Số
 
 ### Mô Hình Embedder: `ARCFACE`
 - [Đồ thị FAR/FRR Trade-off & Score Distribution](../figures/roc_curves/roc_far_frr_arcface.png)
-- **Nhận xét:** Ngưỡng tối ưu $T^*$ tại điểm cân bằng EER là `0.296`.
+- **Nhận xét:** Ngưỡng tối ưu $T^*$ tại điểm cân bằng EER là `0.257`.
 
 ### Mô Hình Embedder: `FACENET512`
 - [Đồ thị FAR/FRR Trade-off & Score Distribution](../figures/roc_curves/roc_far_frr_facenet512.png)
-- **Nhận xét:** Ngưỡng tối ưu $T^*$ tại điểm cân bằng EER là `0.516`.
+- **Nhận xét:** Ngưỡng tối ưu $T^*$ tại điểm cân bằng EER là `0.517`.
 
 ### Mô Hình Embedder: `SFACE`
 - [Đồ thị FAR/FRR Trade-off & Score Distribution](../figures/roc_curves/roc_far_frr_sface.png)
-- **Nhận xét:** Ngưỡng tối ưu $T^*$ tại điểm cân bằng EER là `0.357`.
+- **Nhận xét:** Ngưỡng tối ưu $T^*$ tại điểm cân bằng EER là `0.336`.
 
 ---
 
@@ -36,7 +36,7 @@ Báo cáo kiểm thử định lượng độ chính xác sinh trắc học trê
 Dựa trên kết quả thực nghiệm mới nhất, cấu hình ngưỡng tối ưu cho các mô hình:
 ```yaml
 thresholds:
-  arcface: 0.296
-  facenet512: 0.516
-  sface: 0.357
+  arcface: 0.257
+  facenet512: 0.517
+  sface: 0.336
 ```
