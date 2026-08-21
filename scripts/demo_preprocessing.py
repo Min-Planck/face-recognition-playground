@@ -97,17 +97,22 @@ def main():
 
     for img_name in image_files:
         img_path = os.path.join(img_dir, img_name)
-        img = cv2.imread(img_path)
+        try:
+            with open(img_path, "rb") as f:
+                img = cv2.imdecode(np.frombuffer(f.read(), np.uint8), cv2.IMREAD_COLOR)
+        except Exception:
+            img = None
+
         if img is None:
             continue
 
         base_name = os.path.splitext(img_name)[0]
         print(f"=== Đang xử lý ảnh: {img_name} (Kích thước: {img.shape}) ===")
 
-        # 1. Pipeline tuần tự
-        img_clahe = apply_clahe(img, clip_limit=2.0, tile_grid_size=(8, 8))
-        img_denoised = apply_denoise(img_clahe, method="bilateral")
-        img_sharpened = apply_sharpen(img_denoised, strength=0.4)
+        # 1. Pipeline tuần tự: Raw -> Denoise -> CLAHE -> Sharpen
+        img_denoised = apply_denoise(img, method="bilateral", d=5, sigma_color=25.0, sigma_space=25.0)
+        img_clahe = apply_clahe(img_denoised, clip_limit=1.5, tile_grid_size=(8, 8))
+        img_sharpened = apply_sharpen(img_clahe, strength=0.3, sigma=1.5, threshold=3.0)
 
         # 2. Pipeline qua hàm wrapper chính
         img_final = preprocess_image(img, config=prep_config)
@@ -126,18 +131,21 @@ def main():
         dim = (w_target, h_target)
 
         r_img = cv2.resize(img, dim)
-        r_clahe = cv2.resize(img_clahe, dim)
         r_denoised = cv2.resize(img_denoised, dim)
+        r_clahe = cv2.resize(img_clahe, dim)
         r_final = cv2.resize(img_final, dim)
 
         r_img = draw_caption_banner(r_img, "1. Raw Input", banner_height=42, font_scale=0.65)
-        r_clahe = draw_caption_banner(r_clahe, "2. + CLAHE", banner_height=42, font_scale=0.65)
-        r_denoised = draw_caption_banner(r_denoised, "3. + Denoise", banner_height=42, font_scale=0.65)
+        r_denoised = draw_caption_banner(r_denoised, "2. + Denoise", banner_height=42, font_scale=0.65)
+        r_clahe = draw_caption_banner(r_clahe, "3. + CLAHE", banner_height=42, font_scale=0.65)
         r_final = draw_caption_banner(r_final, "4. + Sharpen (Final)", banner_height=42, font_scale=0.65)
 
-        comparison = np.hstack([r_img, r_clahe, r_denoised, r_final])
+        comparison = np.hstack([r_img, r_denoised, r_clahe, r_final])
         comp_path = os.path.join(output_dir, f"comparison_{base_name}.jpg")
-        cv2.imwrite(comp_path, comparison)
+        is_success, buffer = cv2.imencode(".jpg", comparison)
+        if is_success:
+            with open(comp_path, "wb") as f:
+                f.write(buffer)
         print(f"  -> Đã lưu ảnh so sánh: {comp_path}")
 
         # 5. Sinh hard cases với banner đen chữ trắng
@@ -159,7 +167,10 @@ def main():
 
         hard_case_grid = np.vstack(grid_rows)
         hc_path = os.path.join(output_dir, f"hard_cases_{base_name}.jpg")
-        cv2.imwrite(hc_path, hard_case_grid)
+        is_success, buffer = cv2.imencode(".jpg", hard_case_grid)
+        if is_success:
+            with open(hc_path, "wb") as f:
+                f.write(buffer)
         print(f"  -> Đã lưu lưới hard cases: {hc_path}\n")
 
     print("=== Hoàn tất thử nghiệm Preprocessing & Augmentation ===")

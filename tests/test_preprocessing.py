@@ -28,33 +28,66 @@ def dummy_face_image():
 
 
 def test_apply_clahe(dummy_face_image):
-    enhanced = apply_clahe(dummy_face_image, clip_limit=2.0, tile_grid_size=(8, 8))
+    # Test default clip_limit=1.5
+    enhanced = apply_clahe(dummy_face_image)
     assert enhanced is not None
     assert enhanced.shape == dummy_face_image.shape
     assert enhanced.dtype == np.uint8
 
+    # Test custom parameters
+    enhanced_custom = apply_clahe(dummy_face_image, clip_limit=2.0, tile_grid_size=[4, 4])
+    assert enhanced_custom.shape == dummy_face_image.shape
+
 
 def test_apply_denoise(dummy_face_image):
-    denoised = apply_denoise(dummy_face_image, method="bilateral")
-    assert denoised is not None
-    assert denoised.shape == dummy_face_image.shape
+    # Test default Bilateral Filter (d=5, sigma_color=25.0, sigma_space=25.0)
+    denoised_bilateral = apply_denoise(dummy_face_image)
+    assert denoised_bilateral is not None
+    assert denoised_bilateral.shape == dummy_face_image.shape
+
+    # Test FastNlMeans
+    denoised_nl = apply_denoise(dummy_face_image, method="fast_nlmeans", h=3.0)
+    assert denoised_nl is not None
+    assert denoised_nl.shape == dummy_face_image.shape
 
 
 def test_apply_sharpen(dummy_face_image):
-    sharpened = apply_sharpen(dummy_face_image, strength=0.5)
+    # Test default Unsharp Masking (strength=0.3, sigma=1.5, threshold=3.0)
+    sharpened = apply_sharpen(dummy_face_image)
     assert sharpened is not None
     assert sharpened.shape == dummy_face_image.shape
+    assert sharpened.dtype == np.uint8
+
+    # Test strength=0 returns copy
+    untouched = apply_sharpen(dummy_face_image, strength=0.0)
+    np.testing.assert_array_equal(untouched, dummy_face_image)
 
 
 def test_preprocess_image_pipeline(dummy_face_image):
-    config = {
-        "clahe": {"enabled": True, "clip_limit": 2.0, "tile_grid_size": [8, 8]},
-        "denoise": True,
-        "sharpen": True,
+    # Test with nested dict config
+    nested_config = {
+        "denoise": {"enabled": True, "method": "bilateral", "d": 5, "sigma_color": 25.0, "sigma_space": 25.0},
+        "clahe": {"enabled": True, "clip_limit": 1.5, "tile_grid_size": [8, 8]},
+        "sharpen": {"enabled": True, "strength": 0.3, "sigma": 1.5, "threshold": 3.0},
     }
-    processed = preprocess_image(dummy_face_image, config=config)
-    assert processed is not None
-    assert processed.shape == dummy_face_image.shape
+    processed_nested = preprocess_image(dummy_face_image, config=nested_config)
+    assert processed_nested is not None
+    assert processed_nested.shape == dummy_face_image.shape
+
+    # Test with simple boolean config
+    bool_config = {
+        "denoise": True,
+        "clahe": True,
+        "sharpen": False,
+    }
+    processed_bool = preprocess_image(dummy_face_image, config=bool_config)
+    assert processed_bool is not None
+    assert processed_bool.shape == dummy_face_image.shape
+
+    # Test with None config (default)
+    processed_default = preprocess_image(dummy_face_image, config=None)
+    assert processed_default is not None
+    assert processed_default.shape == dummy_face_image.shape
 
 
 def test_augmentations(dummy_face_image):

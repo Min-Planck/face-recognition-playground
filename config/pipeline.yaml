@@ -16,7 +16,7 @@ thresholds:
 preprocessing:
   clahe:
     enabled: true
-    clip_limit: 2.0
+    clip_limit: 1.5
     tile_grid_size: [8, 8]
   denoise: true
   sharpen: true

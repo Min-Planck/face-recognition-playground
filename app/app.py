@@ -197,10 +197,10 @@ threshold_val = st.sidebar.slider(
     help=f"Ngưỡng tối ưu thực nghiệm cho {embedder_choice.upper()} là T* = {default_th_for_choice:.2f}",
 )
 
-enable_clahe = st.sidebar.checkbox(
-    "Bật tiền xử lý ảnh (CLAHE + Denoise + Sharpen)",
+enable_preprocess = st.sidebar.checkbox(
+    "Bật tiền xử lý ảnh (Denoise + CLAHE + Sharpen)",
     value=True,
-    help="Cân bằng độ sáng cục bộ và tăng độ sắc nét vùng mặt.",
+    help="Khử nhiễu Bilateral, cân bằng độ sáng CLAHE và làm nét Unsharp Masking.",
 )
 
 st.sidebar.markdown("---")
@@ -220,7 +220,7 @@ st.sidebar.caption(f"Đã đăng ký: **{st.session_state.store.get_enrolled_cou
 # GIAO DIỆN CHÍNH: 3 TABS (ĐIỂM DANH, ĐĂNG KÝ, NHẬT KÝ)
 # ==============================================================================
 st.title("Hệ Thống Chấm Công Nhận Diện Khuôn Mặt (Edge AI)")
-st.caption("Pipeline: Tiền xử lý CLAHE → Detection → Alignment (112×112) → Feature Embedding → 1:K Matching")
+st.caption("Pipeline: Tiền xử lý (Denoise → CLAHE → Sharpen) → Detection → Alignment (112×112) → Feature Embedding → 1:K Matching")
 
 # Kiểm tra tương thích số chiều vector giữa Gallery và Embedder đang chọn
 active_embedder = load_cached_embedder(embedder_choice)
@@ -289,9 +289,9 @@ with tab_attendance:
             ResourceMonitor.prime_cpu()
             t_start = time.perf_counter()
 
-            # 1. Tiền xử lý CLAHE
-            if enable_clahe:
-                processed_mat = preprocess_image(infer_mat)
+            # 1. Tiền xử lý (Denoise -> CLAHE -> Sharpen)
+            if enable_preprocess:
+                processed_mat = preprocess_image(infer_mat, config=pipeline_cfg.get("preprocessing"))
             else:
                 processed_mat = infer_mat.copy()
 
@@ -404,7 +404,7 @@ with tab_enroll:
             detector = load_cached_detector(detector_choice)
             embedder = load_cached_embedder(embedder_choice)
 
-            prep_enr = preprocess_image(enr_mat) if enable_clahe else enr_mat.copy()
+            prep_enr = preprocess_image(enr_mat, config=pipeline_cfg.get("preprocessing")) if enable_preprocess else enr_mat.copy()
             boxes = detector.detect(prep_enr)
 
             if not boxes:
